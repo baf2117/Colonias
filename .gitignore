@@ -26,3 +26,9 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Emulador de Azurite (storage local para Azure Functions)
+__azurite_db_*__.json
+__blobstorage__/
+__queuestorage__/
+__tablestorage__/
