@@ -1,0 +1,28 @@
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Variables de entorno y secretos
+.env
+.env.*
+**/local.settings.json
+
+# Builds
+dist/
+build/
+**/dist/
+**/build/
+.azure/
+
+# Azure Functions
+bin/
+obj/
+
+# Editor / SO
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
