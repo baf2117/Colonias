@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Neighborhood.Auth;
 
 namespace Neighborhood;
 
@@ -31,6 +32,7 @@ public class Me
         }
 
         var claims = user.Claims.Select(c => new { c.Type, c.Value });
-        return new OkObjectResult(new { authenticated = true, claims });
+        var currentUser = req.HttpContext.GetCurrentUser();
+        return new OkObjectResult(new { authenticated = true, currentUser, claims });
     }
 }

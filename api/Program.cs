@@ -15,6 +15,7 @@ builder.UseMiddleware<JwtAuthenticationMiddleware>();
 
 builder.Services.AddSingleton(_ => Auth0Options.FromEnvironment());
 builder.Services.AddSingleton<Auth0TokenValidator>();
+builder.Services.AddSingleton<CurrentUserProvider>();
 
 if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING")))
 {

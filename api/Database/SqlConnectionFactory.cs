@@ -3,11 +3,11 @@ using Microsoft.Data.SqlClient;
 namespace Neighborhood.Database;
 
 /// <summary>
-/// Creates connections to the Azure SQL Database using Microsoft Entra ID
-/// authentication ("Authentication=Active Directory Default" in the
-/// connection string) — no password is stored anywhere. Locally it uses
-/// whatever account you're signed in with (Azure CLI or Visual Studio);
-/// once deployed, it uses the Function App's managed identity.
+/// Creates connections to the Azure SQL Database using the connection
+/// string in the 'SqlConnectionString' app setting (SQL authentication,
+/// user + password). Moving to a passwordless approach later (Managed
+/// Identity / Entra ID) only means changing this connection string —
+/// nothing else in the code needs to change.
 /// </summary>
 public static class SqlConnectionFactory
 {
