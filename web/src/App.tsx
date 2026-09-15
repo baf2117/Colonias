@@ -1,122 +1,54 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useAuth0 } from '@auth0/auth0-react'
+import { Admin, CustomRoutes, EditGuesser, ListGuesser, Resource, ShowGuesser } from 'react-admin'
+import { Route } from 'react-router-dom'
+import { buildAuthProvider } from './authProvider'
+import { buildDataProvider } from './dataProvider'
+import Dashboard from './dashboard/Dashboard'
+import FeesShell from './fees/FeesShell'
+import { i18nProvider } from './i18nProvider'
+import { AppLayout } from './layout/AppLayout'
+import { darkTheme, lightTheme } from './theme'
 
-function App() {
-  const [count, setCount] = useState(0)
+// Units sigue siendo el primer recurso real conectado a la API (prueba de
+// que el dataProvider funciona de punta a punta). El resto de las
+// pantallas — Panel general, Cuotas y pagos — son el cascarón visual
+// calcado del Design, con datos de ejemplo: la sidebar y el layout ya
+// están armados como en el diseño final, así que conectarlas a la API más
+// adelante es reemplazar los datos, no rehacer las pantallas.
+export default function App() {
+  const auth0 = useAuth0()
+
+  if (auth0.isLoading) {
+    return <p>Cargando…</p>
+  }
+
+  if (auth0.error) {
+    return <p>Error de autenticación: {auth0.error.message}</p>
+  }
+
+  if (!auth0.isAuthenticated) {
+    auth0.loginWithRedirect()
+    return <p>Redirigiendo al login…</p>
+  }
+
+  const authProvider = buildAuthProvider(auth0)
+  const dataProvider = buildDataProvider(auth0)
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+    <Admin
+      authProvider={authProvider}
+      dataProvider={dataProvider}
+      i18nProvider={i18nProvider}
+      theme={lightTheme}
+      darkTheme={darkTheme}
+      defaultTheme="light"
+      layout={AppLayout}
+      dashboard={Dashboard}
+    >
+      <CustomRoutes>
+        <Route path="/cuotas" element={<FeesShell />} />
+      </CustomRoutes>
+      <Resource name="units" list={ListGuesser} edit={EditGuesser} show={ShowGuesser} />
+    </Admin>
   )
 }
-
-export default App

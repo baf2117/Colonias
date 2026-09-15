@@ -10,7 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.24.1",
+    "@mui/icons-material": "^9.4.0",
     "ra-data-simple-rest": "^5.15.3",
+    "ra-i18n-polyglot": "^5.15.3",
+    "ra-language-english": "^5.15.3",
     "react": "^19.2.8",
     "react-admin": "^5.15.3",
     "react-dom": "^19.2.8"
