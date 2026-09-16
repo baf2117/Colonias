@@ -33,6 +33,34 @@ const neutral = {
 
 const fontFamily = '"Sora", system-ui, sans-serif'
 
+// Estándar de botones del proyecto: bajamos la altura de forma bien
+// explícita en `sizeSmall`/`sizeMedium` (no solo con size="small" en
+// defaultProps) porque las clases de tamaño de MUI se inyectan DESPUÉS
+// de "root" en la hoja de estilos, así que un padding puesto solo en
+// `root` termina pisado igual. Con esto: ~30px de alto en vez de los
+// ~37px por defecto — arrancó como pedido puntual en Exportar/Registrar
+// pago, pero queda acá como default para todo botón nuevo.
+const buttonDefaults = {
+  defaultProps: { size: 'small' as const },
+  styleOverrides: {
+    root: { borderRadius: 0 },
+    outlined: { borderWidth: 2, '&:hover': { borderWidth: 2 } },
+    sizeSmall: {
+      minHeight: 30,
+      paddingTop: 4,
+      paddingBottom: 4,
+      paddingLeft: 12,
+      paddingRight: 12,
+      fontSize: '0.8125rem',
+    },
+    sizeMedium: {
+      minHeight: 32,
+      paddingTop: 5,
+      paddingBottom: 5,
+    },
+  },
+}
+
 // El sistema es deliberadamente de un solo acento: no hay verde de éxito
 // ni ámbar de advertencia inventados aparte del rojo. "Pagado" queda en
 // tinta neutra (es el estado esperado, no necesita color); "pendiente"
@@ -53,12 +81,7 @@ export const lightTheme = deepmerge(defaultTheme, {
   shape: { borderRadius: 0 },
   typography: { fontFamily, button: { textTransform: 'none', fontWeight: 600 } },
   components: {
-    MuiButton: {
-      styleOverrides: {
-        root: { borderRadius: 0 },
-        outlined: { borderWidth: 2, '&:hover': { borderWidth: 2 } },
-      },
-    },
+    MuiButton: buttonDefaults,
     MuiPaper: { styleOverrides: { root: { borderRadius: 0 } } },
     MuiDivider: { styleOverrides: { root: { borderBottomWidth: 2 } } },
     MuiTextField: { defaultProps: { variant: 'outlined' } },
@@ -86,12 +109,7 @@ export const darkTheme = deepmerge(defaultDarkTheme, {
   shape: { borderRadius: 0 },
   typography: { fontFamily, button: { textTransform: 'none', fontWeight: 600 } },
   components: {
-    MuiButton: {
-      styleOverrides: {
-        root: { borderRadius: 0 },
-        outlined: { borderWidth: 2, '&:hover': { borderWidth: 2 } },
-      },
-    },
+    MuiButton: buttonDefaults,
     MuiPaper: { styleOverrides: { root: { borderRadius: 0 } } },
     MuiDivider: { styleOverrides: { root: { borderBottomWidth: 2 } } },
     MuiTextField: { defaultProps: { variant: 'outlined' } },

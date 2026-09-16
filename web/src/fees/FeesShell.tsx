@@ -1,7 +1,6 @@
 import {
   Box,
   Breadcrumbs,
-  Button,
   Card,
   Checkbox,
   Chip,
@@ -17,6 +16,7 @@ import {
   Typography,
 } from '@mui/material'
 import { Title } from 'react-admin'
+import { AppButton } from '../components/AppButton'
 import { EstadoCuota } from '../components/EstadoCuota'
 import { cobrosDelMes, panelHeader } from '../dashboard/sampleData'
 
@@ -53,15 +53,15 @@ export default function FeesShell() {
           Cuotas y pagos
         </Typography>
         <Stack direction="row" spacing={1.5}>
-          <Button variant="outlined" color="inherit" sx={{ borderWidth: 2 }}>
+          <AppButton variant="outlined" color="inherit" sx={{ borderWidth: 2 }}>
             Exportar
-          </Button>
-          <Button variant="outlined" color="inherit" sx={{ borderWidth: 2 }}>
+          </AppButton>
+          <AppButton variant="outlined" color="inherit" sx={{ borderWidth: 2 }}>
             Generar cargos del mes
-          </Button>
-          <Button variant="contained" color="primary">
+          </AppButton>
+          <AppButton variant="contained" color="primary">
             Registrar pago
-          </Button>
+          </AppButton>
         </Stack>
       </Stack>
 

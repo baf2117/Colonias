@@ -49,7 +49,9 @@ function PlaceholderItem({ text }: { text: string }) {
 
 export function AppMenu() {
   return (
-    <Menu>
+    // pt: un poco de aire entre el borde del menú superior y el primer
+    // grupo, para que no arranque pegado.
+    <Menu sx={{ pt: 2 }}>
       {groups.map((group) => (
         <List
           key={group.label}

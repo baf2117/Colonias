@@ -1,6 +1,5 @@
 import {
   Box,
-  Button,
   Card,
   Divider,
   LinearProgress,
@@ -14,6 +13,7 @@ import {
   Typography,
 } from '@mui/material'
 import { Title } from 'react-admin'
+import { AppButton } from '../components/AppButton'
 import { EstadoCuota } from '../components/EstadoCuota'
 import {
   actividadReciente,
@@ -48,12 +48,12 @@ export default function Dashboard() {
           </Typography>
         </Box>
         <Stack direction="row" spacing={1.5}>
-          <Button variant="outlined" color="inherit" sx={{ borderWidth: 2 }}>
+          <AppButton variant="outlined" color="inherit" sx={{ borderWidth: 2 }}>
             Exportar
-          </Button>
-          <Button variant="contained" color="primary">
+          </AppButton>
+          <AppButton variant="contained" color="primary">
             Registrar pago
-          </Button>
+          </AppButton>
         </Stack>
       </Stack>
 
