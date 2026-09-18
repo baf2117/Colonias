@@ -12,5 +12,16 @@ export const customSpanishMessages = {
         active: 'Activa',
       },
     },
+    neighborhoods: {
+      name: 'Colonia |||| Colonias',
+      fields: {
+        id: 'ID',
+        name: 'Nombre',
+        active: 'Activa',
+        temporaryCodesEnabled: 'Códigos temporales habilitados',
+        permanentCodesEnabled: 'Códigos permanentes habilitados',
+        denyAccessEnabled: 'Denegar acceso habilitado',
+      },
+    },
   },
 }

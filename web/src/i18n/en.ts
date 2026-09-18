@@ -12,5 +12,16 @@ export const customEnglishMessages = {
         active: 'Active',
       },
     },
+    neighborhoods: {
+      name: 'Neighborhood |||| Neighborhoods',
+      fields: {
+        id: 'ID',
+        name: 'Name',
+        active: 'Active',
+        temporaryCodesEnabled: 'Temporary codes enabled',
+        permanentCodesEnabled: 'Permanent codes enabled',
+        denyAccessEnabled: 'Deny access enabled',
+      },
+    },
   },
 }

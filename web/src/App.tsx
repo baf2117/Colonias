@@ -7,6 +7,9 @@ import Dashboard from './dashboard/Dashboard'
 import FeesShell from './fees/FeesShell'
 import { i18nProvider } from './i18nProvider'
 import { AppLayout } from './layout/AppLayout'
+import { NeighborhoodCreate } from './neighborhoods/NeighborhoodCreate'
+import { NeighborhoodList } from './neighborhoods/NeighborhoodList'
+import { NeighborhoodShow } from './neighborhoods/NeighborhoodShow'
 import { darkTheme, lightTheme } from './theme'
 
 // Units sigue siendo el primer recurso real conectado a la API (prueba de
@@ -49,6 +52,7 @@ export default function App() {
         <Route path="/cuotas" element={<FeesShell />} />
       </CustomRoutes>
       <Resource name="units" list={ListGuesser} edit={EditGuesser} show={ShowGuesser} />
+      <Resource name="neighborhoods" list={NeighborhoodList} create={NeighborhoodCreate} show={NeighborhoodShow} />
     </Admin>
   )
 }

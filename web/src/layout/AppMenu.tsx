@@ -1,13 +1,22 @@
 import { Box, List, ListSubheader, Typography } from '@mui/material'
 import { Menu } from 'react-admin'
 
-// Sidebar calcada del Design: tres grupos (General / Finanzas / Operación).
-// Solo "Inicio" y "Cuotas y pagos" tienen pantalla real hoy — el resto son
-// placeholders visibles pero sin navegación, a propósito: mejor eso que un
-// link que lleva a una pantalla en blanco.
+// Sidebar calcada del Design: tres grupos (General / Finanzas / Operación),
+// más "SuperUsuario" arriba de todo. Solo "Inicio", "Cuotas y pagos" y
+// "Colonia" tienen pantalla real hoy — el resto son placeholders visibles
+// pero sin navegación, a propósito: mejor eso que un link que lleva a una
+// pantalla en blanco.
+//
+// SuperUsuario es un nivel aparte (todavía sin ningún control de permisos:
+// eso llega después) para las pantallas de administración de la
+// plataforma en sí — por ahora, la gestión de Colonias.
 type Item = { text: string; to?: string }
 
 const groups: { label: string; items: Item[] }[] = [
+  {
+    label: 'SuperUsuario',
+    items: [{ text: 'Colonia', to: '/neighborhoods' }],
+  },
   {
     label: 'General',
     items: [{ text: 'Inicio', to: '/' }, { text: 'Directorio de residentes' }],
@@ -74,7 +83,24 @@ export function AppMenu() {
         >
           {group.items.map((item) =>
             item.to ? (
-              <Menu.Item key={item.text} to={item.to} primaryText={item.text} />
+              // El ítem activo (react-admin agrega la clase
+              // RaMenuItemLink-active vía NavLink) toma el acento único de
+              // la plataforma (primary.main), con una regla de 2px a la
+              // izquierda — el mismo motivo de "una sola línea de 2px" que
+              // ya usan los botones outlined y los dividers del tema.
+              <Menu.Item
+                key={item.text}
+                to={item.to}
+                primaryText={item.text}
+                sx={{
+                  '&.RaMenuItemLink-active': {
+                    color: 'primary.main',
+                    fontWeight: 700,
+                    borderLeft: '2px solid',
+                    borderColor: 'primary.main',
+                  },
+                }}
+              />
             ) : (
               <PlaceholderItem key={item.text} text={item.text} />
             ),
