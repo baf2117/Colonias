@@ -7,11 +7,19 @@ using Neighborhood.Database;
 
 namespace Neighborhood;
 
-// First real CRUD resource, built to prove the react-admin dataProvider
-// wiring end to end (ra-data-simple-rest's protocol: range/sort query
-// params, a Content-Range response header for lists, "id" in every
-// record). Units is the simplest table we have, so it's the smoke test —
-// the same shape gets reused for Residents, Vehicles, etc. later.
+// Primer recurso CRUD real del proyecto (ver comentario original de esta
+// clase), extendido acá para el CRUD completo desde el dashboard:
+// lista, creación, detalle y edición (con borrado incluido en el toolbar
+// por defecto de Edit). NeighborhoodId se agregó en la migración
+// 0002_neighborhoods.sql como NOT NULL con FK a dbo.Neighborhoods —
+// cada Unit pertenece a exactamente una Colonia, así que viaja en el DTO
+// y es obligatorio en Create/Update.
+//
+// FeeAmount (migración 0005) es opcional: NULL significa que la unidad
+// usa la cuota general de su colonia (Neighborhoods.DefaultFeeAmount);
+// un valor acá la reemplaza solo para esta unidad. dbo.Fees ya no
+// existe — esa fila por unidad y por mes se reemplazó por este único
+// valor "vigente hasta que cambie".
 public class Units
 {
     private readonly ILogger<Units> _logger;
@@ -21,7 +29,17 @@ public class Units
         _logger = logger;
     }
 
-    public record UnitDto(int Id, string Identifier, bool Active);
+    public record UnitDto(int Id, string Identifier, bool Active, int NeighborhoodId, string? Address, decimal? FeeAmount);
+
+    private const string SelectColumns = "UnitId, Identifier, Active, NeighborhoodId, Address, FeeAmount";
+
+    private static UnitDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
+        reader.GetInt32(reader.GetOrdinal("UnitId")),
+        reader.GetString(reader.GetOrdinal("Identifier")),
+        reader.GetBoolean(reader.GetOrdinal("Active")),
+        reader.GetInt32(reader.GetOrdinal("NeighborhoodId")),
+        reader.IsDBNull(reader.GetOrdinal("Address")) ? null : reader.GetString(reader.GetOrdinal("Address")),
+        reader.IsDBNull(reader.GetOrdinal("FeeAmount")) ? null : reader.GetDecimal(reader.GetOrdinal("FeeAmount")));
 
     [Function("GetUnits")]
     public async Task<IActionResult> GetList(
@@ -50,6 +68,9 @@ public class Units
                     "id" => "UnitId",
                     "identifier" => "Identifier",
                     "active" => "Active",
+                    "neighborhoodId" => "NeighborhoodId",
+                    "address" => "Address",
+                    "feeAmount" => "FeeAmount",
                     _ => "UnitId",
                 };
                 sortDir = sort[1].Equals("DESC", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
@@ -72,7 +93,7 @@ public class Units
             // sortField is constrained to a fixed allow-list above, so this
             // interpolation is safe (never comes straight from user input).
             cmd.CommandText = $@"
-                SELECT UnitId, Identifier, Active
+                SELECT {SelectColumns}
                 FROM dbo.Units
                 ORDER BY {sortField} {sortDir}
                 OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY";
@@ -82,10 +103,7 @@ public class Units
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                units.Add(new UnitDto(
-                    reader.GetInt32(reader.GetOrdinal("UnitId")),
-                    reader.GetString(reader.GetOrdinal("Identifier")),
-                    reader.GetBoolean(reader.GetOrdinal("Active"))));
+                units.Add(Read(reader));
             }
         }
 
@@ -103,7 +121,7 @@ public class Units
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT UnitId, Identifier, Active FROM dbo.Units WHERE UnitId = @id";
+        cmd.CommandText = $"SELECT {SelectColumns} FROM dbo.Units WHERE UnitId = @id";
         cmd.Parameters.AddWithValue("@id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -112,13 +130,10 @@ public class Units
             return new NotFoundResult();
         }
 
-        return new OkObjectResult(new UnitDto(
-            reader.GetInt32(reader.GetOrdinal("UnitId")),
-            reader.GetString(reader.GetOrdinal("Identifier")),
-            reader.GetBoolean(reader.GetOrdinal("Active"))));
+        return new OkObjectResult(Read(reader));
     }
 
-    public record CreateUnitBody(string Identifier, bool? Active);
+    public record CreateUnitBody(string Identifier, bool? Active, int NeighborhoodId, string? Address, decimal? FeeAmount);
 
     [Function("CreateUnit")]
     public async Task<IActionResult> Create(
@@ -132,27 +147,32 @@ public class Units
             return new BadRequestObjectResult(new { error = "Identifier is required." });
         }
 
+        if (body.NeighborhoodId <= 0)
+        {
+            return new BadRequestObjectResult(new { error = "NeighborhoodId is required." });
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO dbo.Units (Identifier, Active)
-            OUTPUT INSERTED.UnitId, INSERTED.Identifier, INSERTED.Active
-            VALUES (@identifier, @active)";
+            INSERT INTO dbo.Units (Identifier, Active, NeighborhoodId, Address, FeeAmount)
+            OUTPUT INSERTED.UnitId, INSERTED.Identifier, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Address, INSERTED.FeeAmount
+            VALUES (@identifier, @active, @neighborhoodId, @address, @feeAmount)";
         cmd.Parameters.AddWithValue("@identifier", body.Identifier);
         cmd.Parameters.AddWithValue("@active", body.Active ?? true);
+        cmd.Parameters.AddWithValue("@neighborhoodId", body.NeighborhoodId);
+        cmd.Parameters.AddWithValue("@address", (object?)body.Address ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@feeAmount", (object?)body.FeeAmount ?? DBNull.Value);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         await reader.ReadAsync();
-        var created = new UnitDto(
-            reader.GetInt32(reader.GetOrdinal("UnitId")),
-            reader.GetString(reader.GetOrdinal("Identifier")),
-            reader.GetBoolean(reader.GetOrdinal("Active")));
+        var created = Read(reader);
 
         return new CreatedResult($"/api/units/{created.Id}", created);
     }
 
-    public record UpdateUnitBody(string? Identifier, bool? Active);
+    public record UpdateUnitBody(string? Identifier, bool? Active, int? NeighborhoodId, string? Address, decimal? FeeAmount);
 
     [Function("UpdateUnit")]
     public async Task<IActionResult> Update(
@@ -164,14 +184,26 @@ public class Units
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
+        // Address y FeeAmount usan asignación directa, no COALESCE como el
+        // resto: son campos opcionales (a diferencia de Identifier/Active/
+        // NeighborhoodId, que el formulario siempre manda), así que dejarlos
+        // en blanco en la edición debe poder borrar el valor guardado — para
+        // FeeAmount en particular, eso es lo que hace que la unidad vuelva a
+        // usar la cuota general de la colonia.
         cmd.CommandText = @"
             UPDATE dbo.Units
             SET Identifier = COALESCE(@identifier, Identifier),
-                Active = COALESCE(@active, Active)
-            OUTPUT INSERTED.UnitId, INSERTED.Identifier, INSERTED.Active
+                Active = COALESCE(@active, Active),
+                NeighborhoodId = COALESCE(@neighborhoodId, NeighborhoodId),
+                Address = @address,
+                FeeAmount = @feeAmount
+            OUTPUT INSERTED.UnitId, INSERTED.Identifier, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Address, INSERTED.FeeAmount
             WHERE UnitId = @id";
         cmd.Parameters.AddWithValue("@identifier", (object?)body?.Identifier ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", (object?)body?.Active ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@neighborhoodId", (object?)body?.NeighborhoodId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@address", (object?)body?.Address ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@feeAmount", (object?)body?.FeeAmount ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -180,10 +212,7 @@ public class Units
             return new NotFoundResult();
         }
 
-        return new OkObjectResult(new UnitDto(
-            reader.GetInt32(reader.GetOrdinal("UnitId")),
-            reader.GetString(reader.GetOrdinal("Identifier")),
-            reader.GetBoolean(reader.GetOrdinal("Active"))));
+        return new OkObjectResult(Read(reader));
     }
 
     [Function("DeleteUnit")]

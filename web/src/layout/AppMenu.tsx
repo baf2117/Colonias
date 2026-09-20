@@ -2,14 +2,29 @@ import { Box, List, ListSubheader, Typography } from '@mui/material'
 import { Menu } from 'react-admin'
 
 // Sidebar calcada del Design: tres grupos (General / Finanzas / Operación),
-// más "SuperUsuario" arriba de todo. Solo "Inicio", "Cuotas y pagos" y
-// "Colonia" tienen pantalla real hoy — el resto son placeholders visibles
-// pero sin navegación, a propósito: mejor eso que un link que lleva a una
-// pantalla en blanco.
+// más "SuperUsuario" arriba de todo y, ahora, "Administración" entre
+// General y Finanzas para las pantallas de gestión de la colonia en sí
+// (Unidades y Gastos). Solo "Inicio", "Cuotas y pagos" (el cascarón de
+// Finanzas), "Colonia", "Unidades" y "Gastos" tienen pantalla real hoy —
+// el resto son placeholders visibles pero sin navegación, a propósito:
+// mejor eso que un link que lleva a una pantalla en blanco.
+//
+// "Gastos" no tiene un ítem hermano de "Proveedores": los proveedores
+// (dbo.Vendors) se dan de alta al vuelo desde el propio formulario de
+// Crear/Editar Gasto (ver expenses/ExpenseCreate.tsx y
+// vendors/CreateVendorDialog.tsx) en vez de tener una pantalla de
+// gestión aparte.
+//
+// Ya no hay un CRUD de "Cuotas" aparte (existió brevemente sobre
+// dbo.Fees): la cuota ahora vive en Colonia (cuota general,
+// defaultFeeAmount) y, opcionalmente, en cada Unidad (cuota propia,
+// feeAmount) — ver NeighborhoodEdit/Show y UnitCreate/Edit/Show.
 //
 // SuperUsuario es un nivel aparte (todavía sin ningún control de permisos:
 // eso llega después) para las pantallas de administración de la
-// plataforma en sí — por ahora, la gestión de Colonias.
+// plataforma en sí — por ahora, la gestión de Colonias. Administración,
+// en cambio, es del lado del administrador de una colonia (todavía sin
+// distinción de permisos tampoco).
 type Item = { text: string; to?: string }
 
 const groups: { label: string; items: Item[] }[] = [
@@ -19,7 +34,14 @@ const groups: { label: string; items: Item[] }[] = [
   },
   {
     label: 'General',
-    items: [{ text: 'Inicio', to: '/' }, { text: 'Directorio de residentes' }],
+    items: [{ text: 'Inicio', to: '/' }, { text: 'Directorio de residentes', to: '/residents' }],
+  },
+  {
+    label: 'Administración',
+    items: [
+      { text: 'Unidades', to: '/units' },
+      { text: 'Gastos', to: '/expenses' },
+    ],
   },
   {
     label: 'Finanzas',

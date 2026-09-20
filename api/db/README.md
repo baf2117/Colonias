@@ -3,22 +3,17 @@
 Servidor: `jasaju.database.windows.net`
 Base de datos: `free-sql-db-6000256`
 
-## Migraciones
+## Esquema
 
-Los scripts en `migrations/` están numerados y se aplican en orden. `0001_init.sql` crea el esquema inicial completo (catálogos, unidades, residentes, usuarios, pagos, gastos, nómina, accesos y notificaciones).
+`schema.sql` es la única fuente de verdad de la estructura de la base de datos: un archivo con la definición completa (todas las tablas, columnas, llaves) tal como se ve hoy. Ya no se guardan migraciones incrementales numeradas — se descartaron en favor de este archivo único porque simplifica leer "cómo es la base hoy" sin tener que sumar mentalmente una serie de archivos.
 
-### Cómo aplicar un script
+### Cómo aplicar un cambio de esquema
 
-La forma más simple, sin instalar nada, es desde el propio portal de Azure:
+1. Editá `schema.sql` directamente para que refleje la estructura nueva.
+2. Escribí a mano el `ALTER TABLE` / `CREATE TABLE` / `DROP TABLE` equivalente y corrélo contra la base real (Azure), desde el "Editor de consultas (versión preliminar)" del portal de Azure, Azure Data Studio o SQL Server Management Studio (conectándote a `jasaju.database.windows.net,1433`, base de datos `free-sql-db-6000256`, con el usuario y contraseña administradores).
+3. `schema.sql` no se corre tal cual contra una base que ya tiene datos — es la definición completa desde cero, útil para crear un ambiente nuevo o como referencia de lectura, pero cada cambio sobre la base real necesita su propio `ALTER`/`DROP`/`CREATE` puntual, igual que antes.
 
-1. Entra al recurso de la base de datos en portal.azure.com.
-2. Abre "Editor de consultas (versión preliminar)" en el menú de la izquierda.
-3. Inicia sesión con el usuario y contraseña administradores que definiste al crear la base.
-4. Pega el contenido del script (`migrations/0001_init.sql`) y ejecútalo.
-
-También puedes usar Azure Data Studio o SQL Server Management Studio conectándote a `jasaju.database.windows.net,1433`, base de datos `free-sql-db-6000256`, con el mismo usuario y contraseña.
-
-Los scripts nuevos siempre se agregan como archivos nuevos (`0002_...sql`, `0003_...sql`), nunca se edita uno que ya se corrió contra la base.
+Como ya no queda un archivo por cambio, el porqué de cada decisión de esquema (por ejemplo, por qué se eliminó `Fees`) vive en el historial de git de `schema.sql` y en el documento de arquitectura del proyecto, no en un archivo de migración aparte.
 
 ## Conexión desde el API (Azure Functions)
 

@@ -88,7 +88,7 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
         var currentUser = await _userProvider.LoadBySubAsync(sub, context.CancellationToken);
         if (currentUser is null)
         {
-            _logger.LogWarning("No active Users record for Auth0 subject {Sub}.", sub);
+            _logger.LogWarning("No active Residents record for Auth0 subject {Sub}.", sub);
             httpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
             await httpContext.Response.WriteAsJsonAsync(new { error = "This account is not registered in the system." });
             return;

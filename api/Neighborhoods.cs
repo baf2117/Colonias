@@ -13,7 +13,13 @@ namespace Neighborhood;
 // la tabla raíz del modelo multi-colonia (ver migrations/0002_neighborhoods.sql
 // y 0003_merge_colonysettings_into_neighborhoods.sql — esta última ya
 // corrida, así que los tres switches de configuración viven acá y no en
-// una tabla ColonySettings aparte).
+// una tabla ColonySettings aparte). DefaultFeeAmount (migración 0005) es
+// la cuota general de la colonia: cada Unit que no tenga su propia
+// FeeAmount usa este valor, así que cambiarlo acá cambia la cuota
+// efectiva de todas esas unidades de una sola vez. Currency (migración
+// 0007) es el código ISO 4217 de 3 letras (GTQ, USD, etc.) en el que
+// están expresados esos montos — toda la colonia cobra en una sola
+// moneda, así que vive acá y no por unidad.
 public class Neighborhoods
 {
     private readonly ILogger<Neighborhoods> _logger;
@@ -29,10 +35,12 @@ public class Neighborhoods
         bool Active,
         bool TemporaryCodesEnabled,
         bool PermanentCodesEnabled,
-        bool DenyAccessEnabled);
+        bool DenyAccessEnabled,
+        decimal DefaultFeeAmount,
+        string Currency);
 
     private const string SelectColumns =
-        "NeighborhoodId, Name, Active, TemporaryCodesEnabled, PermanentCodesEnabled, DenyAccessEnabled";
+        "NeighborhoodId, Name, Active, TemporaryCodesEnabled, PermanentCodesEnabled, DenyAccessEnabled, DefaultFeeAmount, Currency";
 
     private static NeighborhoodDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
         reader.GetInt32(reader.GetOrdinal("NeighborhoodId")),
@@ -40,7 +48,9 @@ public class Neighborhoods
         reader.GetBoolean(reader.GetOrdinal("Active")),
         reader.GetBoolean(reader.GetOrdinal("TemporaryCodesEnabled")),
         reader.GetBoolean(reader.GetOrdinal("PermanentCodesEnabled")),
-        reader.GetBoolean(reader.GetOrdinal("DenyAccessEnabled")));
+        reader.GetBoolean(reader.GetOrdinal("DenyAccessEnabled")),
+        reader.GetDecimal(reader.GetOrdinal("DefaultFeeAmount")),
+        reader.GetString(reader.GetOrdinal("Currency")));
 
     [Function("GetNeighborhoods")]
     public async Task<IActionResult> GetList(
@@ -72,6 +82,8 @@ public class Neighborhoods
                     "temporaryCodesEnabled" => "TemporaryCodesEnabled",
                     "permanentCodesEnabled" => "PermanentCodesEnabled",
                     "denyAccessEnabled" => "DenyAccessEnabled",
+                    "defaultFeeAmount" => "DefaultFeeAmount",
+                    "currency" => "Currency",
                     _ => "NeighborhoodId",
                 };
                 sortDir = sort[1].Equals("DESC", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
@@ -139,7 +151,9 @@ public class Neighborhoods
         bool? Active,
         bool? TemporaryCodesEnabled,
         bool? PermanentCodesEnabled,
-        bool? DenyAccessEnabled);
+        bool? DenyAccessEnabled,
+        decimal? DefaultFeeAmount,
+        string? Currency);
 
     [Function("CreateNeighborhood")]
     public async Task<IActionResult> Create(
@@ -157,10 +171,11 @@ public class Neighborhoods
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO dbo.Neighborhoods (Name, Active, TemporaryCodesEnabled, PermanentCodesEnabled, DenyAccessEnabled)
+            INSERT INTO dbo.Neighborhoods (Name, Active, TemporaryCodesEnabled, PermanentCodesEnabled, DenyAccessEnabled, DefaultFeeAmount, Currency)
             OUTPUT INSERTED.NeighborhoodId, INSERTED.Name, INSERTED.Active,
-                   INSERTED.TemporaryCodesEnabled, INSERTED.PermanentCodesEnabled, INSERTED.DenyAccessEnabled
-            VALUES (@name, @active, @temporaryCodesEnabled, @permanentCodesEnabled, @denyAccessEnabled)";
+                   INSERTED.TemporaryCodesEnabled, INSERTED.PermanentCodesEnabled, INSERTED.DenyAccessEnabled,
+                   INSERTED.DefaultFeeAmount, INSERTED.Currency
+            VALUES (@name, @active, @temporaryCodesEnabled, @permanentCodesEnabled, @denyAccessEnabled, @defaultFeeAmount, @currency)";
         cmd.Parameters.AddWithValue("@name", body.Name);
         cmd.Parameters.AddWithValue("@active", body.Active ?? true);
         // Mismos defaults que la migración 0003 le dio a estas columnas
@@ -169,6 +184,8 @@ public class Neighborhoods
         cmd.Parameters.AddWithValue("@temporaryCodesEnabled", body.TemporaryCodesEnabled ?? true);
         cmd.Parameters.AddWithValue("@permanentCodesEnabled", body.PermanentCodesEnabled ?? true);
         cmd.Parameters.AddWithValue("@denyAccessEnabled", body.DenyAccessEnabled ?? false);
+        cmd.Parameters.AddWithValue("@defaultFeeAmount", body.DefaultFeeAmount ?? 0m);
+        cmd.Parameters.AddWithValue("@currency", body.Currency ?? "GTQ");
 
         await using var reader = await cmd.ExecuteReaderAsync();
         await reader.ReadAsync();
@@ -182,7 +199,9 @@ public class Neighborhoods
         bool? Active,
         bool? TemporaryCodesEnabled,
         bool? PermanentCodesEnabled,
-        bool? DenyAccessEnabled);
+        bool? DenyAccessEnabled,
+        decimal? DefaultFeeAmount,
+        string? Currency);
 
     [Function("UpdateNeighborhood")]
     public async Task<IActionResult> Update(
@@ -200,15 +219,20 @@ public class Neighborhoods
                 Active = COALESCE(@active, Active),
                 TemporaryCodesEnabled = COALESCE(@temporaryCodesEnabled, TemporaryCodesEnabled),
                 PermanentCodesEnabled = COALESCE(@permanentCodesEnabled, PermanentCodesEnabled),
-                DenyAccessEnabled = COALESCE(@denyAccessEnabled, DenyAccessEnabled)
+                DenyAccessEnabled = COALESCE(@denyAccessEnabled, DenyAccessEnabled),
+                DefaultFeeAmount = COALESCE(@defaultFeeAmount, DefaultFeeAmount),
+                Currency = COALESCE(@currency, Currency)
             OUTPUT INSERTED.NeighborhoodId, INSERTED.Name, INSERTED.Active,
-                   INSERTED.TemporaryCodesEnabled, INSERTED.PermanentCodesEnabled, INSERTED.DenyAccessEnabled
+                   INSERTED.TemporaryCodesEnabled, INSERTED.PermanentCodesEnabled, INSERTED.DenyAccessEnabled,
+                   INSERTED.DefaultFeeAmount, INSERTED.Currency
             WHERE NeighborhoodId = @id";
         cmd.Parameters.AddWithValue("@name", (object?)body?.Name ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", (object?)body?.Active ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@temporaryCodesEnabled", (object?)body?.TemporaryCodesEnabled ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@permanentCodesEnabled", (object?)body?.PermanentCodesEnabled ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@denyAccessEnabled", (object?)body?.DenyAccessEnabled ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@defaultFeeAmount", (object?)body?.DefaultFeeAmount ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@currency", (object?)body?.Currency ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();

@@ -1,0 +1,67 @@
+import {
+  AutocompleteInput,
+  BooleanInput,
+  Edit,
+  NumberInput,
+  ReferenceInput,
+  required,
+  SimpleForm,
+  TextInput,
+  useRecordContext,
+} from 'react-admin'
+import { AppFormCol } from '../components/AppFormCol'
+import { AppFormRow } from '../components/AppFormRow'
+import { AppPageTitle } from '../components/AppPageTitle'
+
+// Título con el identificador real de la unidad (no "Unidad" genérico),
+// igual que NeighborhoodShow usa el nombre real de la colonia.
+function UnitEditTitle() {
+  const record = useRecordContext()
+  return <AppPageTitle>{record?.identifier ?? ''}</AppPageTitle>
+}
+
+// Primera pantalla de Edit del proyecto: mismo formulario que
+// UnitCreate (título + grilla de 12 columnas, mismos tamaños de columna),
+// precargado con los valores actuales. El toolbar por defecto de
+// SimpleForm en un <Edit> ya trae el botón "Eliminar" además de
+// "Guardar", así que no hace falta agregar nada más para poder borrar
+// una unidad desde acá.
+//
+// feeAmount opcional: dejarlo vacío hace que la unidad vuelva a usar la
+// cuota general de la colonia (defaultFeeAmount).
+export function UnitEdit() {
+  return (
+    <Edit redirect="list">
+      <SimpleForm>
+        <UnitEditTitle />
+
+        <AppFormRow>
+          <AppFormCol span={3}>
+            <BooleanInput source="active" />
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <ReferenceInput source="neighborhoodId" reference="neighborhoods">
+              <AutocompleteInput optionText="name" validate={required()} fullWidth />
+            </ReferenceInput>
+          </AppFormCol>
+        </AppFormRow>
+
+        <AppFormRow>
+          <AppFormCol span={3}>
+            <TextInput source="identifier" validate={required()} fullWidth />
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <TextInput source="address" validate={required()} fullWidth />
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <NumberInput
+              source="feeAmount"
+              fullWidth
+              helperText="Vacío = usa la cuota de la colonia"
+            />
+          </AppFormCol>
+        </AppFormRow>
+      </SimpleForm>
+    </Edit>
+  )
+}

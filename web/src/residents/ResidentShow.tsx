@@ -1,0 +1,119 @@
+import {
+  BooleanField,
+  EditButton,
+  Labeled,
+  ReferenceField,
+  Show,
+  SimpleShowLayout,
+  TextField,
+  TopToolbar,
+  useRecordContext,
+} from 'react-admin'
+import { AppFormCol } from '../components/AppFormCol'
+import { AppFormRow } from '../components/AppFormRow'
+import { AppPageTitle } from '../components/AppPageTitle'
+
+function ResidentShowTitle() {
+  const record = useRecordContext()
+  return <AppPageTitle>{record?.name ?? ''}</AppPageTitle>
+}
+
+const ResidentShowActions = () => (
+  <TopToolbar>
+    <EditButton />
+  </TopToolbar>
+)
+
+const RELATION_TYPE_LABELS: Record<string, string> = {
+  owner: 'Propietario',
+  tenant: 'Inquilino',
+}
+
+function ResidentRelationTypeField() {
+  const record = useRecordContext<{ relationType: string | null }>()
+  if (!record?.relationType) return <span>—</span>
+  return <span>{RELATION_TYPE_LABELS[record.relationType] ?? record.relationType}</span>
+}
+
+// Auth0Sub nunca se muestra tal cual (es un identificador técnico, no
+// algo legible) — solo si la cuenta ya está vinculada o no, que es lo
+// único que le importa a quien administra la colonia. No todo residente
+// inicia sesión en el sistema (ver la nota sobre Auth0Sub opcional en
+// schema.sql y en el diagrama ER).
+function ResidentAccountField() {
+  const record = useRecordContext<{ auth0Sub: string | null }>()
+  return <span>{record?.auth0Sub ? 'Vinculada' : 'Sin cuenta todavía'}</span>
+}
+
+// Misma pantalla de referencia que UnitShow (título + AppFormRow/
+// AppFormCol de 12 columnas, solo lectura).
+export function ResidentShow() {
+  return (
+    <Show actions={<ResidentShowActions />}>
+      <SimpleShowLayout>
+        <ResidentShowTitle />
+
+        <AppFormRow>
+          <AppFormCol span={4}>
+            <Labeled source="phone">
+              <TextField source="phone" emptyText="—" />
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={4}>
+            <Labeled source="email">
+              <TextField source="email" emptyText="—" />
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={4}>
+            <Labeled source="active">
+              <BooleanField source="active" />
+            </Labeled>
+          </AppFormCol>
+        </AppFormRow>
+
+        <AppFormRow>
+          <AppFormCol span={4}>
+            <Labeled source="unitId">
+              <ReferenceField source="unitId" reference="units" emptyText="— (sin unidad)">
+                <TextField source="identifier" />
+              </ReferenceField>
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={4}>
+            <Labeled source="relationType">
+              <ResidentRelationTypeField />
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={4}>
+            <Labeled label="Cuenta">
+              <ResidentAccountField />
+            </Labeled>
+          </AppFormCol>
+        </AppFormRow>
+
+        <AppFormRow>
+          <AppFormCol span={3}>
+            <Labeled source="residente">
+              <BooleanField source="residente" />
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <Labeled source="guardia">
+              <BooleanField source="guardia" />
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <Labeled source="administrador">
+              <BooleanField source="administrador" />
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <Labeled source="superAdministrador">
+              <BooleanField source="superAdministrador" />
+            </Labeled>
+          </AppFormCol>
+        </AppFormRow>
+      </SimpleShowLayout>
+    </Show>
+  )
+}
