@@ -20,6 +20,11 @@ namespace Neighborhood;
 // un valor acá la reemplaza solo para esta unidad. dbo.Fees ya no
 // existe — esa fila por unidad y por mes se reemplazó por este único
 // valor "vigente hasta que cambie".
+//
+// RegistrationCode es el código que un residente usa para auto-registrarse
+// (ver Residents.cs → RegisterResident): se genera solo al crear la
+// unidad, no viaja en UpdateUnitBody (no es editable desde el dashboard
+// por ahora).
 public class Units
 {
     private readonly ILogger<Units> _logger;
@@ -29,9 +34,9 @@ public class Units
         _logger = logger;
     }
 
-    public record UnitDto(int Id, string Identifier, bool Active, int NeighborhoodId, string? Address, decimal? FeeAmount);
+    public record UnitDto(int Id, string Identifier, bool Active, int NeighborhoodId, string? Address, decimal? FeeAmount, string RegistrationCode);
 
-    private const string SelectColumns = "UnitId, Identifier, Active, NeighborhoodId, Address, FeeAmount";
+    private const string SelectColumns = "UnitId, Identifier, Active, NeighborhoodId, Address, FeeAmount, RegistrationCode";
 
     private static UnitDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
         reader.GetInt32(reader.GetOrdinal("UnitId")),
@@ -39,7 +44,22 @@ public class Units
         reader.GetBoolean(reader.GetOrdinal("Active")),
         reader.GetInt32(reader.GetOrdinal("NeighborhoodId")),
         reader.IsDBNull(reader.GetOrdinal("Address")) ? null : reader.GetString(reader.GetOrdinal("Address")),
-        reader.IsDBNull(reader.GetOrdinal("FeeAmount")) ? null : reader.GetDecimal(reader.GetOrdinal("FeeAmount")));
+        reader.IsDBNull(reader.GetOrdinal("FeeAmount")) ? null : reader.GetDecimal(reader.GetOrdinal("FeeAmount")),
+        reader.GetString(reader.GetOrdinal("RegistrationCode")));
+
+    // Alfabeto sin 0/O/1/I/L (se confunden fácilmente cuando el admin se lo
+    // dicta o lo escribe a mano a un residente).
+    private const string RegistrationCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+    private static string GenerateRegistrationCode()
+    {
+        var chars = new char[6];
+        for (var i = 0; i < chars.Length; i++)
+        {
+            chars[i] = RegistrationCodeAlphabet[Random.Shared.Next(RegistrationCodeAlphabet.Length)];
+        }
+        return new string(chars);
+    }
 
     [Function("GetUnits")]
     public async Task<IActionResult> GetList(
@@ -154,22 +174,38 @@ public class Units
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = @"
-            INSERT INTO dbo.Units (Identifier, Active, NeighborhoodId, Address, FeeAmount)
-            OUTPUT INSERTED.UnitId, INSERTED.Identifier, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Address, INSERTED.FeeAmount
-            VALUES (@identifier, @active, @neighborhoodId, @address, @feeAmount)";
-        cmd.Parameters.AddWithValue("@identifier", body.Identifier);
-        cmd.Parameters.AddWithValue("@active", body.Active ?? true);
-        cmd.Parameters.AddWithValue("@neighborhoodId", body.NeighborhoodId);
-        cmd.Parameters.AddWithValue("@address", (object?)body.Address ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@feeAmount", (object?)body.FeeAmount ?? DBNull.Value);
 
-        await using var reader = await cmd.ExecuteReaderAsync();
-        await reader.ReadAsync();
-        var created = Read(reader);
+        // Reintenta con un código nuevo si choca con el índice único
+        // (UX_Units_RegistrationCode) — con 6 caracteres de un alfabeto de
+        // 31 son ~887 millones de combinaciones, así que esto es solo para
+        // no romper la creación en el caso remoto de una colisión.
+        for (var attempt = 1; ; attempt++)
+        {
+            var registrationCode = GenerateRegistrationCode();
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+                INSERT INTO dbo.Units (Identifier, Active, NeighborhoodId, Address, FeeAmount, RegistrationCode)
+                OUTPUT INSERTED.UnitId, INSERTED.Identifier, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Address, INSERTED.FeeAmount, INSERTED.RegistrationCode
+                VALUES (@identifier, @active, @neighborhoodId, @address, @feeAmount, @registrationCode)";
+            cmd.Parameters.AddWithValue("@identifier", body.Identifier);
+            cmd.Parameters.AddWithValue("@active", body.Active ?? true);
+            cmd.Parameters.AddWithValue("@neighborhoodId", body.NeighborhoodId);
+            cmd.Parameters.AddWithValue("@address", (object?)body.Address ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@feeAmount", (object?)body.FeeAmount ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@registrationCode", registrationCode);
 
-        return new CreatedResult($"/api/units/{created.Id}", created);
+            try
+            {
+                await using var reader = await cmd.ExecuteReaderAsync();
+                await reader.ReadAsync();
+                var created = Read(reader);
+                return new CreatedResult($"/api/units/{created.Id}", created);
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627 && attempt < 5)
+            {
+                _logger.LogWarning(ex, "RegistrationCode collision on attempt {Attempt}, retrying.", attempt);
+            }
+        }
     }
 
     public record UpdateUnitBody(string? Identifier, bool? Active, int? NeighborhoodId, string? Address, decimal? FeeAmount);
@@ -197,7 +233,7 @@ public class Units
                 NeighborhoodId = COALESCE(@neighborhoodId, NeighborhoodId),
                 Address = @address,
                 FeeAmount = @feeAmount
-            OUTPUT INSERTED.UnitId, INSERTED.Identifier, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Address, INSERTED.FeeAmount
+            OUTPUT INSERTED.UnitId, INSERTED.Identifier, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Address, INSERTED.FeeAmount, INSERTED.RegistrationCode
             WHERE UnitId = @id";
         cmd.Parameters.AddWithValue("@identifier", (object?)body?.Identifier ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", (object?)body?.Active ?? DBNull.Value);

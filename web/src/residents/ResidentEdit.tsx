@@ -4,7 +4,6 @@ import {
   Edit,
   ReferenceInput,
   required,
-  SelectInput,
   SimpleForm,
   TextInput,
   useRecordContext,
@@ -12,11 +11,6 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
-
-const RELATION_TYPE_CHOICES = [
-  { id: 'owner', name: 'Propietario' },
-  { id: 'tenant', name: 'Inquilino' },
-]
 
 // Título con el nombre real del residente, igual que UnitEdit usa el
 // identificador real de la unidad.
@@ -35,30 +29,26 @@ export function ResidentEdit() {
     <Edit redirect="list">
       <SimpleForm>
         <ResidentEditTitle />
-
         <AppFormRow>
-          <AppFormCol span={4}>
-            <TextInput source="name" validate={required()} fullWidth />
-          </AppFormCol>
-          <AppFormCol span={4}>
-            <TextInput source="phone" fullWidth />
-          </AppFormCol>
-          <AppFormCol span={4}>
-            <TextInput source="email" fullWidth />
+
+          <AppFormCol span={2}>
+            <BooleanInput source="active" />
           </AppFormCol>
         </AppFormRow>
-
         <AppFormRow>
-          <AppFormCol span={4}>
+          <AppFormCol span={3}>
+            <TextInput source="name" validate={required()} fullWidth />
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <TextInput source="phone" fullWidth />
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <TextInput source="email" fullWidth />
+          </AppFormCol>
+          <AppFormCol span={3}>
             <ReferenceInput source="unitId" reference="units">
               <AutocompleteInput optionText="identifier" fullWidth helperText="Vacío = sin unidad (administrador o guardia)" />
             </ReferenceInput>
-          </AppFormCol>
-          <AppFormCol span={4}>
-            <SelectInput source="relationType" choices={RELATION_TYPE_CHOICES} fullWidth />
-          </AppFormCol>
-          <AppFormCol span={2}>
-            <BooleanInput source="active" />
           </AppFormCol>
         </AppFormRow>
 

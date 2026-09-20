@@ -4,7 +4,6 @@ import {
   Create,
   ReferenceInput,
   required,
-  SelectInput,
   SimpleForm,
   TextInput,
   useTranslate,
@@ -13,20 +12,13 @@ import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 
-// owner/tenant son los únicos valores que acepta el CHECK de
-// dbo.Residents.RelationType.
-const RELATION_TYPE_CHOICES = [
-  { id: 'owner', name: 'Propietario' },
-  { id: 'tenant', name: 'Inquilino' },
-]
-
 // Misma pantalla de referencia que UnitCreate (título + grilla de 12
 // columnas). unitId es opcional — a diferencia de Units.neighborhoodId —
 // porque un administrador o guardia "puro" no vive en ninguna unidad
 // (ver schema.sql y el diagrama ER: la fusión de Users dentro de
-// Residents es lo que volvió UnitId opcional). relationType solo tiene
-// sentido cuando hay unidad, pero no se condiciona su visibilidad a
-// propósito en esta primera versión — queda vacío si no aplica.
+// Residents es lo que volvió UnitId opcional). No se guarda ninguna
+// relación tipo propietario/inquilino con la unidad — decisión
+// explícita de no discriminar residentes por eso.
 //
 // Los cuatro roles son booleanos independientes y combinables (no un
 // <SelectInput> de un solo valor): una misma persona puede ser
@@ -51,13 +43,10 @@ export function ResidentCreate() {
         </AppFormRow>
 
         <AppFormRow>
-          <AppFormCol span={4}>
+          <AppFormCol span={6}>
             <ReferenceInput source="unitId" reference="units">
               <AutocompleteInput optionText="identifier" fullWidth helperText="Vacío = sin unidad (administrador o guardia)" />
             </ReferenceInput>
-          </AppFormCol>
-          <AppFormCol span={4}>
-            <SelectInput source="relationType" choices={RELATION_TYPE_CHOICES} fullWidth />
           </AppFormCol>
           <AppFormCol span={2}>
             <BooleanInput source="active" defaultValue={true} />

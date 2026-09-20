@@ -58,24 +58,32 @@ CREATE TABLE dbo.Entrances (
 -- ============================================================
 
 CREATE TABLE dbo.Units (
-    UnitId          INT IDENTITY(1,1) PRIMARY KEY,
-    Identifier      NVARCHAR(50)    NOT NULL,   -- e.g. "House 12", "Lot 45"
-    Active          BIT             NOT NULL DEFAULT 1,
-    NeighborhoodId  INT             NOT NULL REFERENCES dbo.Neighborhoods(NeighborhoodId),
-    Address         NVARCHAR(200)   NULL,       -- dirección completa; obligatoria a nivel de dashboard, no de BD
-    FeeAmount       DECIMAL(10,2)   NULL,       -- override de la cuota de la colonia; NULL = usa Neighborhoods.DefaultFeeAmount
-    CreatedAt       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+    UnitId            INT IDENTITY(1,1) PRIMARY KEY,
+    Identifier        NVARCHAR(50)    NOT NULL,   -- e.g. "House 12", "Lot 45"
+    Active            BIT             NOT NULL DEFAULT 1,
+    NeighborhoodId    INT             NOT NULL REFERENCES dbo.Neighborhoods(NeighborhoodId),
+    Address           NVARCHAR(200)   NULL,       -- dirección completa; obligatoria a nivel de dashboard, no de BD
+    FeeAmount         DECIMAL(10,2)   NULL,       -- override de la cuota de la colonia; NULL = usa Neighborhoods.DefaultFeeAmount
+    RegistrationCode  NVARCHAR(10)    NOT NULL,   -- código para que un residente se auto-registre (ver RegisterResident en Residents.cs)
+    CreatedAt         DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+-- Un residente que recién inicia sesión con Auth0 y todavía no tiene
+-- fila en Residents entra este código (dado por el administrador de su
+-- colonia) para asociarse a su unidad sin tener que elegirla de una
+-- lista completa de unidades que todavía no le pertenece.
+CREATE UNIQUE INDEX UX_Units_RegistrationCode ON dbo.Units(RegistrationCode);
 
 -- dbo.Users se fusionó dentro de dbo.Residents: con pocos tipos de
 -- usuario y una misma persona pudiendo ser, a la vez, residente y
 -- guardia (o administrador y residente), un Role único por fila no
 -- alcanzaba. En vez de una tabla de roles aparte, Residents tiene
--- cuatro columnas booleanas independientes y combinables. UnitId y
--- RelationType pasan a ser opcionales porque un administrador o
--- guardia "puro" no vive en ninguna unidad; Auth0Sub también es
--- opcional porque no todo residente inicia sesión en el sistema. Ver
--- la nota al final del archivo.
+-- cuatro columnas booleanas independientes y combinables. UnitId es
+-- opcional porque un administrador o guardia "puro" no vive en
+-- ninguna unidad; Auth0Sub también es opcional porque no todo
+-- residente inicia sesión en el sistema. No se guarda ninguna
+-- relación tipo propietario/inquilino con la unidad. Ver la nota al
+-- final del archivo.
 CREATE TABLE dbo.Residents (
     ResidentId          INT IDENTITY(1,1) PRIMARY KEY,
     UnitId              INT             NULL REFERENCES dbo.Units(UnitId),   -- NULL: administrador/guardia sin unidad propia
@@ -84,7 +92,6 @@ CREATE TABLE dbo.Residents (
     Phone               NVARCHAR(30)    NULL,
     Email               NVARCHAR(255)   NULL,
     PhotoBlobPath       NVARCHAR(500)   NULL,
-    RelationType        NVARCHAR(20)    NULL CHECK (RelationType IN ('owner','tenant')),   -- NULL: no aplica (no vive en una unidad)
     Administrador       BIT             NOT NULL DEFAULT 0,
     SuperAdministrador  BIT             NOT NULL DEFAULT 0,
     Residente           BIT             NOT NULL DEFAULT 0,
@@ -258,12 +265,19 @@ CREATE TABLE dbo.Notifications (
 --     dbo.Users): Role (string) se reemplazó por cuatro columnas
 --     booleanas combinables (Administrador, SuperAdministrador,
 --     Residente, Guardia), lo que también resuelve la distinción
---     entre administrador y superadministrador. UnitId, RelationType
---     y Auth0Sub pasaron a ser opcionales en Residents. Todas las FK
+--     entre administrador y superadministrador. UnitId y Auth0Sub
+--     pasaron a ser opcionales en Residents. Todas las FK
 --     que apuntaban a dbo.Users (Payments.ReviewedByUserId,
 --     Expenses.RegisteredByUserId, AccessLog.GuardUserId,
 --     Notifications.UserId) ahora apuntan a dbo.Residents — se
 --     dejaron con el nombre "UserId" porque describen un rol, no la
 --     tabla referenciada (pendiente de decidir si conviene
 --     renombrarlas).
+--   - Residents.RelationType (owner/tenant) se eliminó: decisión
+--     explícita de no distinguir residentes por su relación de
+--     propiedad con la unidad. Solo queda Residents.UnitId.
+--   - Units.RegistrationCode (NOT NULL, único): habilita el
+--     auto-registro de residentes desde el login de Auth0 (endpoint
+--     RegisterResident en Residents.cs) sin tener que darlos de alta a
+--     mano desde el dashboard.
 -- ============================================================

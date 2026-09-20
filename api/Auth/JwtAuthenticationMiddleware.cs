@@ -22,6 +22,18 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
         "DbPing",
     };
 
+    // Estas dos funciones exigen un JWT de Auth0 válido (una persona
+    // real autenticada), pero no una fila activa en Residents todavía:
+    // es exactamente el caso de alguien que acaba de loguearse por
+    // primera vez y todavía no se registró como residente de una
+    // unidad. Me le dice al front si ya está registrado; RegisterResident
+    // es el endpoint que crea esa fila (ver Residents.cs).
+    private static readonly HashSet<string> OptionalRegistrationFunctions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Me",
+        "RegisterResident",
+    };
+
     private readonly Auth0TokenValidator _validator;
     private readonly CurrentUserProvider _userProvider;
     private readonly ILogger<JwtAuthenticationMiddleware> _logger;
@@ -85,16 +97,20 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
             return;
         }
 
+        httpContext.SetAuth0Sub(sub);
+
         var currentUser = await _userProvider.LoadBySubAsync(sub, context.CancellationToken);
-        if (currentUser is null)
+        if (currentUser is not null)
+        {
+            httpContext.SetCurrentUser(currentUser);
+        }
+        else if (!OptionalRegistrationFunctions.Contains(context.FunctionDefinition.Name))
         {
             _logger.LogWarning("No active Residents record for Auth0 subject {Sub}.", sub);
             httpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
             await httpContext.Response.WriteAsJsonAsync(new { error = "This account is not registered in the system." });
             return;
         }
-
-        httpContext.SetCurrentUser(currentUser);
 
         await next(context);
     }

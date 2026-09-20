@@ -1,4 +1,5 @@
 import { useAuth0 } from '@auth0/auth0-react'
+import { CssBaseline, ThemeProvider } from '@mui/material'
 import { Admin, CustomRoutes, Resource } from 'react-admin'
 import { Route } from 'react-router-dom'
 import { buildAuthProvider } from './authProvider'
@@ -15,6 +16,8 @@ import { NeighborhoodCreate } from './neighborhoods/NeighborhoodCreate'
 import { NeighborhoodEdit } from './neighborhoods/NeighborhoodEdit'
 import { NeighborhoodList } from './neighborhoods/NeighborhoodList'
 import { NeighborhoodShow } from './neighborhoods/NeighborhoodShow'
+import { RegisterResident } from './registration/RegisterResident'
+import { useRegistrationStatus } from './registration/useRegistrationStatus'
 import { ResidentCreate } from './residents/ResidentCreate'
 import { ResidentEdit } from './residents/ResidentEdit'
 import { ResidentList } from './residents/ResidentList'
@@ -34,6 +37,7 @@ import { UnitShow } from './units/UnitShow'
 // a la API más adelante es reemplazar los datos, no rehacer las pantallas.
 export default function App() {
   const auth0 = useAuth0()
+  const registration = useRegistrationStatus(auth0)
 
   if (auth0.isLoading) {
     return <p>Cargando…</p>
@@ -46,6 +50,34 @@ export default function App() {
   if (!auth0.isAuthenticated) {
     auth0.loginWithRedirect()
     return <p>Redirigiendo al login…</p>
+  }
+
+  // Un login de Auth0 válido no alcanza: hasta que /api/Me confirme una
+  // fila en dbo.Residents, no hay unidad ni rol que mostrar en el
+  // dashboard. RegisterResident es la pantalla de "completa tu registro"
+  // (código de unidad + datos del residente) — ver useRegistrationStatus.ts.
+  if (registration.status.status === 'loading') {
+    return <p>Cargando…</p>
+  }
+
+  if (registration.status.status === 'error') {
+    return <p>No se pudo verificar tu registro: {registration.status.message}</p>
+  }
+
+  if (registration.status.status === 'unregistered') {
+    // <Admin> es quien normalmente envuelve todo en el ThemeProvider/
+    // CssBaseline del proyecto (lightTheme/darkTheme, ver theme.ts) —
+    // como esta pantalla se muestra ANTES de montar <Admin>, sin este
+    // wrapper los componentes de MUI (TextField, Button) quedan sin
+    // tema: el `color-scheme: light dark` de index.css hace que el
+    // navegador les ponga fondo oscuro nativo mientras el texto sale
+    // con el color por defecto (oscuro) de MUI — texto invisible.
+    return (
+      <ThemeProvider theme={lightTheme}>
+        <CssBaseline />
+        <RegisterResident auth0={auth0} onRegistered={registration.recheck} />
+      </ThemeProvider>
+    )
   }
 
   const authProvider = buildAuthProvider(auth0)

@@ -1,38 +1,28 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.Logging;
 using Neighborhood.Auth;
 
 namespace Neighborhood;
 
-// Diagnostic endpoint: by the time this runs, JwtAuthenticationMiddleware
-// has already validated the Auth0 token (this function isn't in the
-// middleware's public/skip list), so req.HttpContext.User is the
-// validated ClaimsPrincipal. AuthorizationLevel.Anonymous here is
-// intentional — the JWT check is the real gate, not a function key.
+// Diagnostic endpoint, y ahora también la forma en la que el frontend
+// sabe si tiene que mostrar el dashboard o la pantalla de registro
+// (ver RegisterResident en Residents.cs y OptionalRegistrationFunctions
+// en JwtAuthenticationMiddleware.cs). Por eso Me es una de las dos
+// funciones que aceptan un JWT válido sin exigir una fila en Residents:
+// un login de Auth0 exitoso pero sin CurrentUser significa "todavía no
+// te registraste", no un error.
 public class Me
 {
-    private readonly ILogger<Me> _logger;
-
-    public Me(ILogger<Me> logger)
-    {
-        _logger = logger;
-    }
-
     [Function("Me")]
     public IActionResult Run([HttpTrigger(AuthorizationLevel.Anonymous, "get")] HttpRequest req)
     {
-        var user = req.HttpContext.User;
-
-        if (user.Identity?.IsAuthenticated != true)
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null)
         {
-            _logger.LogWarning("Me called without an authenticated user in HttpContext.");
-            return new UnauthorizedObjectResult(new { error = "No authenticated user found." });
+            return new OkObjectResult(new { registered = false });
         }
 
-        var claims = user.Claims.Select(c => new { c.Type, c.Value });
-        var currentUser = req.HttpContext.GetCurrentUser();
-        return new OkObjectResult(new { authenticated = true, currentUser, claims });
+        return new OkObjectResult(new { registered = true, resident = currentUser });
     }
 }

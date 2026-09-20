@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Neighborhood.Auth;
 using Neighborhood.Database;
 
 namespace Neighborhood;
@@ -11,15 +12,18 @@ namespace Neighborhood;
 // Vendors.cs. dbo.Residents es la fusión de lo que antes eran dbo.Users
 // y dbo.Residents (ver schema.sql): en vez de un Role de texto único,
 // cuatro columnas booleanas independientes y combinables
-// (Administrador, SuperAdministrador, Residente, Guardia). UnitId y
-// RelationType son opcionales — un administrador o guardia "puro" no
-// vive en ninguna unidad.
+// (Administrador, SuperAdministrador, Residente, Guardia). UnitId es
+// opcional — un administrador o guardia "puro" no vive en ninguna
+// unidad. No se guarda ninguna relación tipo propietario/inquilino con
+// la unidad.
 //
-// Auth0Sub no se expone en Create/Update a propósito: vincular una
-// cuenta de Auth0 a una fila de Residents es un flujo aparte (todavía
-// no construido), no algo que el formulario de alta/edición deba poder
-// tocar a mano. Sí viaja en el DTO de lectura (GetList/GetOne) para que
-// el dashboard pueda mostrar si la cuenta ya está vinculada.
+// Auth0Sub no se expone en Create/Update a propósito: no es algo que el
+// formulario de alta/edición del dashboard deba poder tocar a mano. Sí
+// viaja en el DTO de lectura (GetList/GetOne) para que el dashboard
+// pueda mostrar si la cuenta ya está vinculada. La única forma de
+// setearlo es RegisterResident (más abajo), que lo toma del JWT
+// validado, nunca del body — así nadie puede vincularse a un Auth0Sub
+// ajeno.
 public class Residents
 {
     private readonly ILogger<Residents> _logger;
@@ -35,7 +39,6 @@ public class Residents
         string? Phone,
         string? Email,
         int? UnitId,
-        string? RelationType,
         bool Administrador,
         bool SuperAdministrador,
         bool Residente,
@@ -44,7 +47,7 @@ public class Residents
         string? Auth0Sub);
 
     private const string SelectColumns =
-        "ResidentId, Name, Phone, Email, UnitId, RelationType, Administrador, SuperAdministrador, Residente, Guardia, Active, Auth0Sub";
+        "ResidentId, Name, Phone, Email, UnitId, Administrador, SuperAdministrador, Residente, Guardia, Active, Auth0Sub";
 
     private static ResidentDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
         reader.GetInt32(reader.GetOrdinal("ResidentId")),
@@ -52,7 +55,6 @@ public class Residents
         reader.IsDBNull(reader.GetOrdinal("Phone")) ? null : reader.GetString(reader.GetOrdinal("Phone")),
         reader.IsDBNull(reader.GetOrdinal("Email")) ? null : reader.GetString(reader.GetOrdinal("Email")),
         reader.IsDBNull(reader.GetOrdinal("UnitId")) ? null : reader.GetInt32(reader.GetOrdinal("UnitId")),
-        reader.IsDBNull(reader.GetOrdinal("RelationType")) ? null : reader.GetString(reader.GetOrdinal("RelationType")),
         reader.GetBoolean(reader.GetOrdinal("Administrador")),
         reader.GetBoolean(reader.GetOrdinal("SuperAdministrador")),
         reader.GetBoolean(reader.GetOrdinal("Residente")),
@@ -89,7 +91,6 @@ public class Residents
                     "phone" => "Phone",
                     "email" => "Email",
                     "unitId" => "UnitId",
-                    "relationType" => "RelationType",
                     "administrador" => "Administrador",
                     "superAdministrador" => "SuperAdministrador",
                     "residente" => "Residente",
@@ -211,14 +212,11 @@ public class Residents
         return new OkObjectResult(Read(reader));
     }
 
-    private static readonly HashSet<string> ValidRelationTypes = new(StringComparer.OrdinalIgnoreCase) { "owner", "tenant" };
-
     public record CreateResidentBody(
         string Name,
         string? Phone,
         string? Email,
         int? UnitId,
-        string? RelationType,
         bool? Administrador,
         bool? SuperAdministrador,
         bool? Residente,
@@ -237,28 +235,22 @@ public class Residents
             return new BadRequestObjectResult(new { error = "Name is required." });
         }
 
-        if (body.RelationType is not null && !ValidRelationTypes.Contains(body.RelationType))
-        {
-            return new BadRequestObjectResult(new { error = "RelationType must be 'owner' or 'tenant'." });
-        }
-
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO dbo.Residents
-                (Name, Phone, Email, UnitId, RelationType, Administrador, SuperAdministrador, Residente, Guardia, Active)
+                (Name, Phone, Email, UnitId, Administrador, SuperAdministrador, Residente, Guardia, Active)
             OUTPUT
                 INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
-                INSERTED.RelationType, INSERTED.Administrador, INSERTED.SuperAdministrador,
+                INSERTED.Administrador, INSERTED.SuperAdministrador,
                 INSERTED.Residente, INSERTED.Guardia, INSERTED.Active, INSERTED.Auth0Sub
             VALUES
-                (@name, @phone, @email, @unitId, @relationType, @administrador, @superAdministrador, @residente, @guardia, @active)";
+                (@name, @phone, @email, @unitId, @administrador, @superAdministrador, @residente, @guardia, @active)";
         cmd.Parameters.AddWithValue("@name", body.Name);
         cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@email", (object?)body.Email ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@unitId", (object?)body.UnitId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@relationType", (object?)body.RelationType ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@administrador", body.Administrador ?? false);
         cmd.Parameters.AddWithValue("@superAdministrador", body.SuperAdministrador ?? false);
         cmd.Parameters.AddWithValue("@residente", body.Residente ?? false);
@@ -277,7 +269,6 @@ public class Residents
         string? Phone,
         string? Email,
         int? UnitId,
-        string? RelationType,
         bool? Administrador,
         bool? SuperAdministrador,
         bool? Residente,
@@ -291,27 +282,21 @@ public class Residents
         var body = await JsonSerializer.DeserializeAsync<UpdateResidentBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-        if (body?.RelationType is not null && !ValidRelationTypes.Contains(body.RelationType))
-        {
-            return new BadRequestObjectResult(new { error = "RelationType must be 'owner' or 'tenant'." });
-        }
-
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
-        // Phone/Email/UnitId/RelationType usan asignación directa, no
-        // COALESCE: son opcionales, así que dejarlos en blanco en la
-        // edición debe poder borrar el valor guardado (igual que Address
-        // en UpdateUnit) — para UnitId en particular, eso es lo que
-        // permite pasar a alguien de "vive en una unidad" a "cuenta sin
-        // unidad" (o viceversa).
+        // Phone/Email/UnitId usan asignación directa, no COALESCE: son
+        // opcionales, así que dejarlos en blanco en la edición debe poder
+        // borrar el valor guardado (igual que Address en UpdateUnit) —
+        // para UnitId en particular, eso es lo que permite pasar a
+        // alguien de "vive en una unidad" a "cuenta sin unidad" (o
+        // viceversa).
         cmd.CommandText = @"
             UPDATE dbo.Residents
             SET Name = COALESCE(@name, Name),
                 Phone = @phone,
                 Email = @email,
                 UnitId = @unitId,
-                RelationType = @relationType,
                 Administrador = COALESCE(@administrador, Administrador),
                 SuperAdministrador = COALESCE(@superAdministrador, SuperAdministrador),
                 Residente = COALESCE(@residente, Residente),
@@ -319,14 +304,13 @@ public class Residents
                 Active = COALESCE(@active, Active)
             OUTPUT
                 INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
-                INSERTED.RelationType, INSERTED.Administrador, INSERTED.SuperAdministrador,
+                INSERTED.Administrador, INSERTED.SuperAdministrador,
                 INSERTED.Residente, INSERTED.Guardia, INSERTED.Active, INSERTED.Auth0Sub
             WHERE ResidentId = @id";
         cmd.Parameters.AddWithValue("@name", (object?)body?.Name ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@phone", (object?)body?.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@email", (object?)body?.Email ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@unitId", (object?)body?.UnitId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@relationType", (object?)body?.RelationType ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@administrador", (object?)body?.Administrador ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@superAdministrador", (object?)body?.SuperAdministrador ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@residente", (object?)body?.Residente ?? DBNull.Value);
@@ -372,6 +356,89 @@ public class Residents
             // en vez de eliminar.
             _logger.LogWarning(ex, "DeleteResident {Id} blocked by a foreign key.", id);
             return new ConflictObjectResult(new { error = "No se puede eliminar: este residente tiene registros relacionados (pagos, códigos de acceso, etc.). Desactívalo en vez de eliminarlo." });
+        }
+    }
+
+    public record RegisterResidentBody(string Code, string Name, string? Email, string? Phone);
+
+    // Auto-registro: lo llama alguien que ya inició sesión con Auth0 pero
+    // todavía no tiene fila en Residents (ver OptionalRegistrationFunctions
+    // en JwtAuthenticationMiddleware.cs, que deja pasar esta función sin
+    // exigir esa fila). En vez de elegir su unidad de una lista, entra el
+    // código que le dio el administrador de su colonia
+    // (Units.RegistrationCode) — así no hace falta exponerle el listado
+    // completo de unidades a alguien que todavía no es residente de
+    // ninguna. El residente creado queda con Residente = true y sin los
+    // otros tres roles: son cosas que solo un administrador asigna a mano
+    // desde ResidentEdit.
+    [Function("RegisterResident")]
+    public async Task<IActionResult> Register(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "residents/register")] HttpRequest req)
+    {
+        var sub = req.HttpContext.GetAuth0Sub();
+        if (string.IsNullOrEmpty(sub))
+        {
+            // No debería pasar: si llegamos hasta acá, el middleware ya
+            // validó el JWT y guardó el sub.
+            return new UnauthorizedResult();
+        }
+
+        var body = await JsonSerializer.DeserializeAsync<RegisterResidentBody>(
+            req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (body is null || string.IsNullOrWhiteSpace(body.Code))
+        {
+            return new BadRequestObjectResult(new { error = "El código de la unidad es obligatorio." });
+        }
+        if (string.IsNullOrWhiteSpace(body.Name))
+        {
+            return new BadRequestObjectResult(new { error = "El nombre es obligatorio." });
+        }
+
+        await using var connection = SqlConnectionFactory.Create();
+        await connection.OpenAsync();
+
+        int unitId;
+        await using (var lookupCmd = connection.CreateCommand())
+        {
+            lookupCmd.CommandText = "SELECT UnitId FROM dbo.Units WHERE RegistrationCode = @code";
+            lookupCmd.Parameters.AddWithValue("@code", body.Code.Trim());
+            var result = await lookupCmd.ExecuteScalarAsync();
+            if (result is null)
+            {
+                return new BadRequestObjectResult(new { error = "Código inválido. Verifica con el administrador de tu colonia." });
+            }
+            unitId = (int)result;
+        }
+
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO dbo.Residents (Name, Phone, Email, UnitId, Auth0Sub, Residente, Active)
+            OUTPUT
+                INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
+                INSERTED.Administrador, INSERTED.SuperAdministrador, INSERTED.Residente, INSERTED.Guardia,
+                INSERTED.Active, INSERTED.Auth0Sub
+            VALUES (@name, @phone, @email, @unitId, @sub, 1, 1)";
+        cmd.Parameters.AddWithValue("@name", body.Name.Trim());
+        cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@email", (object?)body.Email ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@unitId", unitId);
+        cmd.Parameters.AddWithValue("@sub", sub);
+
+        try
+        {
+            await using var reader = await cmd.ExecuteReaderAsync();
+            await reader.ReadAsync();
+            var created = Read(reader);
+            return new CreatedResult($"/api/residents/{created.Id}", created);
+        }
+        catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
+        {
+            // UX_Residents_Auth0Sub: esta cuenta de Auth0 ya tiene una fila
+            // en Residents (probablemente desactivada). No puede
+            // auto-registrarse de nuevo; que lo resuelva el administrador.
+            _logger.LogWarning(ex, "RegisterResident blocked: Auth0Sub {Sub} already has a Residents row.", sub);
+            return new ConflictObjectResult(new { error = "Ya existe una cuenta registrada con este inicio de sesión. Contacta al administrador." });
         }
     }
 }

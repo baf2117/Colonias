@@ -1,8 +1,11 @@
+import { Box, Typography } from '@mui/material'
 import {
   BooleanField,
+  CreateButton,
   EditButton,
   Labeled,
   ReferenceField,
+  ReferenceManyField,
   Show,
   SimpleShowLayout,
   TextField,
@@ -10,9 +13,11 @@ import {
   useGetOne,
   useRecordContext,
 } from 'react-admin'
+import { AppDatagrid } from '../components/AppDatagrid'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { ResidentRolesField } from '../residents/ResidentList'
 
 // Título con el identificador real de la unidad (no "Unidad" genérico),
 // igual que NeighborhoodShow usa el nombre real de la colonia.
@@ -53,6 +58,36 @@ function UnitFeeAmountField() {
     return null
   }
   return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(record.feeAmount)}</span>
+}
+
+// Residentes de esta unidad (Residents.UnitId → Units.UnitId).
+// ReferenceManyField con target="unitId" reusa el filtro que
+// GetResidents ya soporta (filter.unitId), sin endpoint aparte. El
+// botón "Nuevo residente" precarga unitId en ResidentCreate vía
+// `state={{ record: { unitId } }}` (patrón estándar de react-admin
+// para prellenar un Create desde afuera) — no hay que elegir la
+// unidad a mano al crear un residente desde acá.
+function UnitResidentsSection() {
+  const record = useRecordContext()
+  if (!record) return null
+  return (
+    <Box sx={{ width: '100%', mt: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="h6">Residentes</Typography>
+        <CreateButton resource="residents" label="Nuevo residente" state={{ record: { unitId: record.id } }} />
+      </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        También pueden registrarse ellos mismos con el código de arriba al iniciar sesión por primera vez.
+      </Typography>
+      <ReferenceManyField reference="residents" target="unitId" label={false}>
+        <AppDatagrid rowClick="show" bulkActionButtons={false}>
+          <TextField source="name" />
+          <ResidentRolesField label="Roles" />
+          <BooleanField source="active" />
+        </AppDatagrid>
+      </ReferenceManyField>
+    </Box>
+  )
 }
 
 // Misma pantalla de referencia que NeighborhoodShow (título + AppFormRow/
@@ -97,7 +132,14 @@ export function UnitShow() {
               <UnitFeeAmountField />
             </Labeled>
           </AppFormCol>
+          <AppFormCol span={3}>
+            <Labeled label="Código de registro">
+              <TextField source="registrationCode" />
+            </Labeled>
+          </AppFormCol>
         </AppFormRow>
+
+        <UnitResidentsSection />
       </SimpleShowLayout>
     </Show>
   )

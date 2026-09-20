@@ -36,7 +36,6 @@ export const customSpanishMessages = {
         phone: 'Teléfono',
         email: 'Correo',
         unitId: 'Unidad',
-        relationType: 'Relación con la unidad',
         administrador: 'Administrador',
         superAdministrador: 'Superadministrador',
         residente: 'Residente',

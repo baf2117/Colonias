@@ -16,7 +16,7 @@ const ROLE_LABELS = {
   guardia: 'Guardia',
 } as const
 
-function ResidentRolesField() {
+export function ResidentRolesField() {
   const record = useRecordContext<Record<keyof typeof ROLE_LABELS, boolean>>()
   if (!record) return null
   const roles = (Object.keys(ROLE_LABELS) as (keyof typeof ROLE_LABELS)[])
