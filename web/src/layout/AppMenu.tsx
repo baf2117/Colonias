@@ -4,10 +4,11 @@ import { Menu } from 'react-admin'
 // Sidebar calcada del Design: tres grupos (General / Finanzas / Operación),
 // más "SuperUsuario" arriba de todo y, ahora, "Administración" entre
 // General y Finanzas para las pantallas de gestión de la colonia en sí
-// (Unidades y Gastos). Solo "Inicio", "Cuotas y pagos" (el cascarón de
-// Finanzas), "Colonia", "Unidades" y "Gastos" tienen pantalla real hoy —
-// el resto son placeholders visibles pero sin navegación, a propósito:
-// mejor eso que un link que lleva a una pantalla en blanco.
+// (Unidades y Gastos). "Inicio", "Cuotas y pagos" (ahora un recurso real
+// contra /api/payments, ya no el cascarón de FeesShell), "Colonia",
+// "Unidades", "Gastos" y "Directorio de residentes" tienen pantalla real
+// hoy — el resto son placeholders visibles pero sin navegación, a
+// propósito: mejor eso que un link que lleva a una pantalla en blanco.
 //
 // "Gastos" no tiene un ítem hermano de "Proveedores": los proveedores
 // (dbo.Vendors) se dan de alta al vuelo desde el propio formulario de
@@ -19,6 +20,8 @@ import { Menu } from 'react-admin'
 // dbo.Fees): la cuota ahora vive en Colonia (cuota general,
 // defaultFeeAmount) y, opcionalmente, en cada Unidad (cuota propia,
 // feeAmount) — ver NeighborhoodEdit/Show y UnitCreate/Edit/Show.
+// "Cuotas y pagos" sí sigue existiendo como recurso: es dbo.Payments,
+// contra qué mes y unidad se registra un comprobante — ver payments/.
 //
 // SuperUsuario es un nivel aparte (todavía sin ningún control de permisos:
 // eso llega después) para las pantallas de administración de la
@@ -41,12 +44,13 @@ const groups: { label: string; items: Item[] }[] = [
     items: [
       { text: 'Unidades', to: '/units' },
       { text: 'Gastos', to: '/expenses' },
+      { text: 'Guardias', to: '/security-staff' },
     ],
   },
   {
     label: 'Finanzas',
     items: [
-      { text: 'Cuotas y pagos', to: '/cuotas' },
+      { text: 'Cuotas y pagos', to: '/payments' },
       { text: 'Estado de cuenta' },
       { text: 'Presupuesto' },
     ],

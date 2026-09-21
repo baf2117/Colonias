@@ -1,13 +1,17 @@
+import { Box, Typography } from '@mui/material'
 import {
   BooleanField,
+  CreateButton,
   EditButton,
   Labeled,
+  ReferenceManyField,
   Show,
   SimpleShowLayout,
   TextField,
   TopToolbar,
   useRecordContext,
 } from 'react-admin'
+import { AppDatagrid } from '../components/AppDatagrid'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
@@ -40,6 +44,32 @@ const NeighborhoodShowActions = () => (
     <EditButton />
   </TopToolbar>
 )
+
+// Guardias de esta colonia (SecurityStaff.NeighborhoodId → Neighborhoods.
+// NeighborhoodId), mismo patrón que UnitResidentsSection en UnitShow.tsx.
+// El botón "Nuevo guardia" precarga neighborhoodId en SecurityStaffCreate.
+function NeighborhoodStaffSection() {
+  const record = useRecordContext()
+  if (!record) return null
+  return (
+    <Box sx={{ width: '100%', mt: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography variant="h6">Guardias</Typography>
+        <CreateButton resource="security-staff" label="Nuevo guardia" state={{ record: { neighborhoodId: record.id } }} />
+      </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        También pueden registrarse ellos mismos con el código de arriba al iniciar sesión por primera vez.
+      </Typography>
+      <ReferenceManyField reference="security-staff" target="neighborhoodId" label={false}>
+        <AppDatagrid rowClick="show" bulkActionButtons={false}>
+          <TextField source="name" />
+          <TextField source="phone" emptyText="—" />
+          <BooleanField source="active" />
+        </AppDatagrid>
+      </ReferenceManyField>
+    </Box>
+  )
+}
 
 // Misma pantalla de referencia que NeighborhoodCreate (título +
 // AppFormRow/AppFormCol de 12 columnas), pero de solo lectura: se llega
@@ -99,7 +129,14 @@ export function NeighborhoodShow() {
               <TextField source="currency" />
             </Labeled>
           </AppFormCol>
+          <AppFormCol span={3}>
+            <Labeled label="Código de registro (guardias)">
+              <TextField source="staffRegistrationCode" />
+            </Labeled>
+          </AppFormCol>
         </AppFormRow>
+
+        <NeighborhoodStaffSection />
       </SimpleShowLayout>
     </Show>
   )

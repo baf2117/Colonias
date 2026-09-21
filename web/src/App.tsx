@@ -1,7 +1,7 @@
 import { useAuth0 } from '@auth0/auth0-react'
 import { CssBaseline, ThemeProvider } from '@mui/material'
-import { Admin, CustomRoutes, Resource } from 'react-admin'
-import { Route } from 'react-router-dom'
+import { createTheme } from '@mui/material/styles'
+import { Admin, Resource } from 'react-admin'
 import { buildAuthProvider } from './authProvider'
 import { buildDataProvider } from './dataProvider'
 import Dashboard from './dashboard/Dashboard'
@@ -9,19 +9,29 @@ import { ExpenseCreate } from './expenses/ExpenseCreate'
 import { ExpenseEdit } from './expenses/ExpenseEdit'
 import { ExpenseList } from './expenses/ExpenseList'
 import { ExpenseShow } from './expenses/ExpenseShow'
-import FeesShell from './fees/FeesShell'
 import { i18nProvider } from './i18nProvider'
 import { AppLayout } from './layout/AppLayout'
 import { NeighborhoodCreate } from './neighborhoods/NeighborhoodCreate'
 import { NeighborhoodEdit } from './neighborhoods/NeighborhoodEdit'
 import { NeighborhoodList } from './neighborhoods/NeighborhoodList'
 import { NeighborhoodShow } from './neighborhoods/NeighborhoodShow'
-import { RegisterResident } from './registration/RegisterResident'
+import { PayrollCreate } from './payroll/PayrollCreate'
+import { PayrollEdit } from './payroll/PayrollEdit'
+import { PayrollShow } from './payroll/PayrollShow'
+import { PaymentCreate } from './payments/PaymentCreate'
+import { PaymentEdit } from './payments/PaymentEdit'
+import { PaymentList } from './payments/PaymentList'
+import { PaymentShow } from './payments/PaymentShow'
+import { CompleteRegistration } from './registration/CompleteRegistration'
 import { useRegistrationStatus } from './registration/useRegistrationStatus'
 import { ResidentCreate } from './residents/ResidentCreate'
 import { ResidentEdit } from './residents/ResidentEdit'
 import { ResidentList } from './residents/ResidentList'
 import { ResidentShow } from './residents/ResidentShow'
+import { SecurityStaffCreate } from './security-staff/SecurityStaffCreate'
+import { SecurityStaffEdit } from './security-staff/SecurityStaffEdit'
+import { SecurityStaffList } from './security-staff/SecurityStaffList'
+import { SecurityStaffShow } from './security-staff/SecurityStaffShow'
 import { darkTheme, lightTheme } from './theme'
 import { UnitCreate } from './units/UnitCreate'
 import { UnitEdit } from './units/UnitEdit'
@@ -30,11 +40,11 @@ import { UnitShow } from './units/UnitShow'
 
 // Units sigue siendo el primer recurso real conectado a la API (prueba de
 // que el dataProvider funciona de punta a punta), ahora con pantallas
-// propias (lista/crear/ver/editar) en vez de los guessers genéricos. El
-// resto de las pantallas — Panel general, Cuotas y pagos — son el
-// cascarón visual calcado del Design, con datos de ejemplo: la sidebar y
-// el layout ya están armados como en el diseño final, así que conectarlas
-// a la API más adelante es reemplazar los datos, no rehacer las pantallas.
+// propias (lista/crear/ver/editar) en vez de los guessers genéricos.
+// Payments es el último en sumarse (ver payments/), reemplazando al
+// cascarón visual que tenía Finanzas > Cuotas y pagos. Solo el Panel
+// general sigue siendo el cascarón calcado del Design, con datos de
+// ejemplo.
 export default function App() {
   const auth0 = useAuth0()
   const registration = useRegistrationStatus(auth0)
@@ -72,10 +82,16 @@ export default function App() {
     // tema: el `color-scheme: light dark` de index.css hace que el
     // navegador les ponga fondo oscuro nativo mientras el texto sale
     // con el color por defecto (oscuro) de MUI — texto invisible.
+    // lightTheme es un objeto de opciones (deepmerge sobre defaultTheme de
+    // react-admin), no un tema ya resuelto: <Admin> lo resuelve internamente
+    // con createTheme() antes de usarlo. Acá hay que hacerlo a mano — sin
+    // esto, palette.common y otros valores derivados quedan undefined y
+    // cualquier componente de MUI que los use (Button, etc.) explota en
+    // tiempo de ejecución ("Cannot read properties of undefined").
     return (
-      <ThemeProvider theme={lightTheme}>
+      <ThemeProvider theme={createTheme(lightTheme)}>
         <CssBaseline />
-        <RegisterResident auth0={auth0} onRegistered={registration.recheck} />
+        <CompleteRegistration auth0={auth0} onRegistered={registration.recheck} />
       </ThemeProvider>
     )
   }
@@ -94,9 +110,6 @@ export default function App() {
       layout={AppLayout}
       dashboard={Dashboard}
     >
-      <CustomRoutes>
-        <Route path="/cuotas" element={<FeesShell />} />
-      </CustomRoutes>
       <Resource name="units" list={UnitList} create={UnitCreate} show={UnitShow} edit={UnitEdit} />
       <Resource
         name="neighborhoods"
@@ -122,6 +135,29 @@ export default function App() {
           deja a ReferenceInput/ReferenceField y al create-inline hablar con
           /api/vendors. */}
       <Resource name="vendors" />
+      {/* Reemplaza al cascarón de Finanzas > Cuotas y pagos (FeesShell,
+          retirado junto con /cuotas): ahora es un recurso real contra
+          /api/payments, con la regla de "un pago activo por unidad y mes"
+          aplicada del lado del servidor (ver Payments.cs). */}
+      <Resource name="payments" list={PaymentList} create={PaymentCreate} show={PaymentShow} edit={PaymentEdit} />
+      {/* Guardias (dbo.SecurityStaff): no son Residents, viven ligados
+          directo a una colonia (NeighborhoodId), no a una unidad. Ver
+          api/SecurityStaff.cs y el auto-registro paralelo al de
+          residentes en registration/RegisterSecurityStaff.tsx. */}
+      <Resource
+        name="security-staff"
+        list={SecurityStaffList}
+        create={SecurityStaffCreate}
+        show={SecurityStaffShow}
+        edit={SecurityStaffEdit}
+      />
+      {/* Nómina de guardias (dbo.Payroll): sin list ni menú propio a
+          propósito — se registra desde la misma vista de un guardia
+          (SecurityStaffShow), igual que Vendors se usa solo como recurso
+          de apoyo para ReferenceInput/ReferenceField, pero acá con
+          pantallas completas (Create/Show/Edit) porque además hace falta
+          navegar a un pago puntual. Ver api/Payroll.cs. */}
+      <Resource name="payroll" create={PayrollCreate} show={PayrollShow} edit={PayrollEdit} />
     </Admin>
   )
 }

@@ -47,22 +47,19 @@ export function ResidentEdit() {
           </AppFormCol>
           <AppFormCol span={3}>
             <ReferenceInput source="unitId" reference="units">
-              <AutocompleteInput optionText="identifier" fullWidth helperText="Vacío = sin unidad (administrador o guardia)" />
+              <AutocompleteInput optionText="identifier" fullWidth helperText="Vacío = sin unidad (administrador)" />
             </ReferenceInput>
           </AppFormCol>
         </AppFormRow>
 
         <AppFormRow>
-          <AppFormCol span={3}>
+          <AppFormCol span={4}>
             <BooleanInput source="residente" />
           </AppFormCol>
-          <AppFormCol span={3}>
-            <BooleanInput source="guardia" />
-          </AppFormCol>
-          <AppFormCol span={3}>
+          <AppFormCol span={4}>
             <BooleanInput source="administrador" />
           </AppFormCol>
-          <AppFormCol span={3}>
+          <AppFormCol span={4}>
             <BooleanInput source="superAdministrador" />
           </AppFormCol>
         </AppFormRow>

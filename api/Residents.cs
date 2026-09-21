@@ -11,11 +11,11 @@ namespace Neighborhood;
 // CRUD de residentes (dbo.Residents), calcado del patrón de Units.cs /
 // Vendors.cs. dbo.Residents es la fusión de lo que antes eran dbo.Users
 // y dbo.Residents (ver schema.sql): en vez de un Role de texto único,
-// cuatro columnas booleanas independientes y combinables
-// (Administrador, SuperAdministrador, Residente, Guardia). UnitId es
-// opcional — un administrador o guardia "puro" no vive en ninguna
-// unidad. No se guarda ninguna relación tipo propietario/inquilino con
-// la unidad.
+// tres columnas booleanas independientes y combinables (Administrador,
+// SuperAdministrador, Residente). UnitId es opcional — un administrador
+// "puro" no vive en ninguna unidad. No se guarda ninguna relación tipo
+// propietario/inquilino con la unidad. Los guardias NO son Residents:
+// viven en dbo.SecurityStaff (ver SecurityStaff.cs).
 //
 // Auth0Sub no se expone en Create/Update a propósito: no es algo que el
 // formulario de alta/edición del dashboard deba poder tocar a mano. Sí
@@ -42,12 +42,11 @@ public class Residents
         bool Administrador,
         bool SuperAdministrador,
         bool Residente,
-        bool Guardia,
         bool Active,
         string? Auth0Sub);
 
     private const string SelectColumns =
-        "ResidentId, Name, Phone, Email, UnitId, Administrador, SuperAdministrador, Residente, Guardia, Active, Auth0Sub";
+        "ResidentId, Name, Phone, Email, UnitId, Administrador, SuperAdministrador, Residente, Active, Auth0Sub";
 
     private static ResidentDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
         reader.GetInt32(reader.GetOrdinal("ResidentId")),
@@ -58,7 +57,6 @@ public class Residents
         reader.GetBoolean(reader.GetOrdinal("Administrador")),
         reader.GetBoolean(reader.GetOrdinal("SuperAdministrador")),
         reader.GetBoolean(reader.GetOrdinal("Residente")),
-        reader.GetBoolean(reader.GetOrdinal("Guardia")),
         reader.GetBoolean(reader.GetOrdinal("Active")),
         reader.IsDBNull(reader.GetOrdinal("Auth0Sub")) ? null : reader.GetString(reader.GetOrdinal("Auth0Sub")));
 
@@ -94,7 +92,6 @@ public class Residents
                     "administrador" => "Administrador",
                     "superAdministrador" => "SuperAdministrador",
                     "residente" => "Residente",
-                    "guardia" => "Guardia",
                     "active" => "Active",
                     _ => "ResidentId",
                 };
@@ -220,7 +217,6 @@ public class Residents
         bool? Administrador,
         bool? SuperAdministrador,
         bool? Residente,
-        bool? Guardia,
         bool? Active);
 
     [Function("CreateResident")]
@@ -240,13 +236,13 @@ public class Residents
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO dbo.Residents
-                (Name, Phone, Email, UnitId, Administrador, SuperAdministrador, Residente, Guardia, Active)
+                (Name, Phone, Email, UnitId, Administrador, SuperAdministrador, Residente, Active)
             OUTPUT
                 INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
                 INSERTED.Administrador, INSERTED.SuperAdministrador,
-                INSERTED.Residente, INSERTED.Guardia, INSERTED.Active, INSERTED.Auth0Sub
+                INSERTED.Residente, INSERTED.Active, INSERTED.Auth0Sub
             VALUES
-                (@name, @phone, @email, @unitId, @administrador, @superAdministrador, @residente, @guardia, @active)";
+                (@name, @phone, @email, @unitId, @administrador, @superAdministrador, @residente, @active)";
         cmd.Parameters.AddWithValue("@name", body.Name);
         cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@email", (object?)body.Email ?? DBNull.Value);
@@ -254,7 +250,6 @@ public class Residents
         cmd.Parameters.AddWithValue("@administrador", body.Administrador ?? false);
         cmd.Parameters.AddWithValue("@superAdministrador", body.SuperAdministrador ?? false);
         cmd.Parameters.AddWithValue("@residente", body.Residente ?? false);
-        cmd.Parameters.AddWithValue("@guardia", body.Guardia ?? false);
         cmd.Parameters.AddWithValue("@active", body.Active ?? true);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -272,7 +267,6 @@ public class Residents
         bool? Administrador,
         bool? SuperAdministrador,
         bool? Residente,
-        bool? Guardia,
         bool? Active);
 
     [Function("UpdateResident")]
@@ -300,12 +294,11 @@ public class Residents
                 Administrador = COALESCE(@administrador, Administrador),
                 SuperAdministrador = COALESCE(@superAdministrador, SuperAdministrador),
                 Residente = COALESCE(@residente, Residente),
-                Guardia = COALESCE(@guardia, Guardia),
                 Active = COALESCE(@active, Active)
             OUTPUT
                 INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
                 INSERTED.Administrador, INSERTED.SuperAdministrador,
-                INSERTED.Residente, INSERTED.Guardia, INSERTED.Active, INSERTED.Auth0Sub
+                INSERTED.Residente, INSERTED.Active, INSERTED.Auth0Sub
             WHERE ResidentId = @id";
         cmd.Parameters.AddWithValue("@name", (object?)body?.Name ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@phone", (object?)body?.Phone ?? DBNull.Value);
@@ -314,7 +307,6 @@ public class Residents
         cmd.Parameters.AddWithValue("@administrador", (object?)body?.Administrador ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@superAdministrador", (object?)body?.SuperAdministrador ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@residente", (object?)body?.Residente ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@guardia", (object?)body?.Guardia ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", (object?)body?.Active ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
 
@@ -369,7 +361,7 @@ public class Residents
     // (Units.RegistrationCode) — así no hace falta exponerle el listado
     // completo de unidades a alguien que todavía no es residente de
     // ninguna. El residente creado queda con Residente = true y sin los
-    // otros tres roles: son cosas que solo un administrador asigna a mano
+    // otros dos roles: son cosas que solo un administrador asigna a mano
     // desde ResidentEdit.
     [Function("RegisterResident")]
     public async Task<IActionResult> Register(
@@ -416,7 +408,7 @@ public class Residents
             INSERT INTO dbo.Residents (Name, Phone, Email, UnitId, Auth0Sub, Residente, Active)
             OUTPUT
                 INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
-                INSERTED.Administrador, INSERTED.SuperAdministrador, INSERTED.Residente, INSERTED.Guardia,
+                INSERTED.Administrador, INSERTED.SuperAdministrador, INSERTED.Residente,
                 INSERTED.Active, INSERTED.Auth0Sub
             VALUES (@name, @phone, @email, @unitId, @sub, 1, 1)";
         cmd.Parameters.AddWithValue("@name", body.Name.Trim());

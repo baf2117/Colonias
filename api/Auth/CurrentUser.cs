@@ -8,8 +8,9 @@ namespace Neighborhood.Auth;
 ///
 /// dbo.Users merged into dbo.Residents (see schema.sql): there is no
 /// more Users/Residents split, so there's no more UserId/Role either.
-/// ResidentId is the merged table's primary key, and the four booleans
-/// below replace the old single-value Role.
+/// ResidentId is the merged table's primary key, and the three booleans
+/// below replace the old single-value Role. Guardia se eliminó: los
+/// guardias ya no son Residents, ver CurrentStaff.
 /// </summary>
 public class CurrentUser
 {
@@ -21,5 +22,4 @@ public class CurrentUser
     public required bool Administrador { get; init; }
     public required bool SuperAdministrador { get; init; }
     public required bool Residente { get; init; }
-    public required bool Guardia { get; init; }
 }

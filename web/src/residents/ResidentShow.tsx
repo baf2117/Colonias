@@ -74,22 +74,17 @@ export function ResidentShow() {
           </AppFormCol>
         </AppFormRow>
         <AppFormRow>
-          <AppFormCol span={3}>
+          <AppFormCol span={4}>
             <Labeled source="residente">
               <BooleanField source="residente" />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={3}>
-            <Labeled source="guardia">
-              <BooleanField source="guardia" />
-            </Labeled>
-          </AppFormCol>
-          <AppFormCol span={3}>
+          <AppFormCol span={4}>
             <Labeled source="administrador">
               <BooleanField source="administrador" />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={3}>
+          <AppFormCol span={4}>
             <Labeled source="superAdministrador">
               <BooleanField source="superAdministrador" />
             </Labeled>

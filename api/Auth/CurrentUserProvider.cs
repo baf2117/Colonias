@@ -22,7 +22,7 @@ public class CurrentUserProvider
         // Residents.
         command.CommandText = @"
             SELECT ResidentId, Auth0Sub, Name, Email, UnitId,
-                   Administrador, SuperAdministrador, Residente, Guardia
+                   Administrador, SuperAdministrador, Residente
             FROM dbo.Residents
             WHERE Auth0Sub = @sub AND Active = 1";
         command.Parameters.AddWithValue("@sub", auth0Sub);
@@ -43,7 +43,38 @@ public class CurrentUserProvider
             Administrador = reader.GetBoolean(reader.GetOrdinal("Administrador")),
             SuperAdministrador = reader.GetBoolean(reader.GetOrdinal("SuperAdministrador")),
             Residente = reader.GetBoolean(reader.GetOrdinal("Residente")),
-            Guardia = reader.GetBoolean(reader.GetOrdinal("Guardia")),
+        };
+    }
+
+    /// <summary>
+    /// Igual que LoadBySubAsync pero contra dbo.SecurityStaff: los
+    /// guardias no son Residents, tienen su propio Auth0Sub y su
+    /// propia relación (directa) con una colonia.
+    /// </summary>
+    public async Task<CurrentStaff?> LoadStaffBySubAsync(string auth0Sub, CancellationToken cancellationToken)
+    {
+        await using var connection = SqlConnectionFactory.Create();
+        await connection.OpenAsync(cancellationToken);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+            SELECT StaffId, Auth0Sub, Name, NeighborhoodId
+            FROM dbo.SecurityStaff
+            WHERE Auth0Sub = @sub AND Active = 1";
+        command.Parameters.AddWithValue("@sub", auth0Sub);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        return new CurrentStaff
+        {
+            StaffId = reader.GetInt32(reader.GetOrdinal("StaffId")),
+            Auth0Sub = reader.GetString(reader.GetOrdinal("Auth0Sub")),
+            Name = reader.GetString(reader.GetOrdinal("Name")),
+            NeighborhoodId = reader.GetInt32(reader.GetOrdinal("NeighborhoodId")),
         };
     }
 }

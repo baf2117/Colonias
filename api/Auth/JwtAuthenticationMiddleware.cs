@@ -22,16 +22,18 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
         "DbPing",
     };
 
-    // Estas dos funciones exigen un JWT de Auth0 válido (una persona
-    // real autenticada), pero no una fila activa en Residents todavía:
-    // es exactamente el caso de alguien que acaba de loguearse por
-    // primera vez y todavía no se registró como residente de una
-    // unidad. Me le dice al front si ya está registrado; RegisterResident
-    // es el endpoint que crea esa fila (ver Residents.cs).
+    // Estas funciones exigen un JWT de Auth0 válido (una persona real
+    // autenticada), pero no una fila activa en Residents ni en
+    // SecurityStaff todavía: es exactamente el caso de alguien que
+    // acaba de loguearse por primera vez y todavía no se registró. Me
+    // le dice al front si ya está registrado (y como qué);
+    // RegisterResident y RegisterSecurityStaff son los endpoints que
+    // crean esa fila (ver Residents.cs y SecurityStaff.cs).
     private static readonly HashSet<string> OptionalRegistrationFunctions = new(StringComparer.OrdinalIgnoreCase)
     {
         "Me",
         "RegisterResident",
+        "RegisterSecurityStaff",
     };
 
     private readonly Auth0TokenValidator _validator;
@@ -99,17 +101,28 @@ public class JwtAuthenticationMiddleware : IFunctionsWorkerMiddleware
 
         httpContext.SetAuth0Sub(sub);
 
+        // Un "sub" válido puede corresponder a un Resident o a un
+        // guardia (SecurityStaff) — son identidades separadas, se
+        // intenta primero Residents y, si no hay match, SecurityStaff.
         var currentUser = await _userProvider.LoadBySubAsync(sub, context.CancellationToken);
         if (currentUser is not null)
         {
             httpContext.SetCurrentUser(currentUser);
         }
-        else if (!OptionalRegistrationFunctions.Contains(context.FunctionDefinition.Name))
+        else
         {
-            _logger.LogWarning("No active Residents record for Auth0 subject {Sub}.", sub);
-            httpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
-            await httpContext.Response.WriteAsJsonAsync(new { error = "This account is not registered in the system." });
-            return;
+            var currentStaff = await _userProvider.LoadStaffBySubAsync(sub, context.CancellationToken);
+            if (currentStaff is not null)
+            {
+                httpContext.SetCurrentStaff(currentStaff);
+            }
+            else if (!OptionalRegistrationFunctions.Contains(context.FunctionDefinition.Name))
+            {
+                _logger.LogWarning("No active Residents/SecurityStaff record for Auth0 subject {Sub}.", sub);
+                httpContext.Response.StatusCode = (int)HttpStatusCode.Forbidden;
+                await httpContext.Response.WriteAsJsonAsync(new { error = "This account is not registered in the system." });
+                return;
+            }
         }
 
         await next(context);

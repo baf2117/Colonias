@@ -8,21 +8,14 @@ type Props = {
   onBack: () => void
 }
 
-// Pantalla que ve cualquier persona que inicia sesión con Auth0 por
-// primera vez y todavía no tiene fila en dbo.Residents (ver
-// useRegistrationStatus.ts y RegisterResident en api/Residents.cs). En
-// vez de elegir su unidad de una lista, entra el código que le dio el
-// administrador de su colonia (Units.RegistrationCode, visible en
-// UnitShow) — así no hace falta exponerle el listado completo de
-// unidades a alguien que todavía no es residente de ninguna.
-//
-// No usa <SimpleForm>/react-admin a propósito: esta pantalla se muestra
-// antes de montar <Admin> (no hay dataProvider ni recursos todavía),
-// así que llama al API directo con fetch, igual que dataProvider.ts.
-export function RegisterResident({ auth0, onRegistered, onBack }: Props) {
+// Mismo mecanismo que RegisterResident, pero con el código de la
+// colonia (Neighborhoods.StaffRegistrationCode, visible en
+// NeighborhoodShow) en vez del de una unidad: un guardia no pertenece
+// a una unidad. Sin campo de correo — dbo.SecurityStaff no tiene
+// columna Email (ver schema.sql).
+export function RegisterSecurityStaff({ auth0, onRegistered, onBack }: Props) {
   const [code, setCode] = useState('')
   const [name, setName] = useState(auth0.user?.name && auth0.user.name !== auth0.user?.email ? auth0.user.name : '')
-  const [email, setEmail] = useState(auth0.user?.email ?? '')
   const [phone, setPhone] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -34,13 +27,12 @@ export function RegisterResident({ auth0, onRegistered, onBack }: Props) {
     try {
       const token = await auth0.getAccessTokenSilently()
       const apiUrl = import.meta.env.VITE_API_URL
-      const response = await fetch(`${apiUrl}/residents/register`, {
+      const response = await fetch(`${apiUrl}/security-staff/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           code: code.trim(),
           name: name.trim(),
-          email: email.trim() || null,
           phone: phone.trim() || null,
         }),
       })
@@ -58,10 +50,10 @@ export function RegisterResident({ auth0, onRegistered, onBack }: Props) {
   return (
     <Box sx={{ maxWidth: 420, mx: 'auto', mt: 8, px: 2 }}>
       <Typography variant="h5" component="h1" fontWeight={700} textAlign="center" sx={{ mb: 1 }}>
-        Registro de residente
+        Registro de guardia
       </Typography>
       <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
-        Ingresa el código que te dio el administrador de tu colonia para asociarte a tu unidad.
+        Ingresa el código que te dio el administrador de la colonia.
       </Typography>
 
       {error && (
@@ -72,14 +64,13 @@ export function RegisterResident({ auth0, onRegistered, onBack }: Props) {
 
       <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <TextField
-          label="Código de la unidad"
+          label="Código de la colonia"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           required
           fullWidth
         />
         <TextField label="Nombre" value={name} onChange={(e) => setName(e.target.value)} required fullWidth />
-        <TextField label="Correo" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
         <TextField label="Teléfono" value={phone} onChange={(e) => setPhone(e.target.value)} fullWidth />
         <Button type="submit" variant="contained" disabled={submitting} sx={{ mt: 1 }}>
           {submitting ? <CircularProgress size={22} /> : 'Registrarme'}

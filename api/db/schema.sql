@@ -38,8 +38,16 @@ CREATE TABLE dbo.Neighborhoods (
     DenyAccessEnabled       BIT             NOT NULL DEFAULT 0,
     DefaultFeeAmount        DECIMAL(10,2)   NOT NULL DEFAULT 0,
     Currency                NVARCHAR(3)     NOT NULL DEFAULT 'GTQ',   -- ISO 4217; toda la colonia cobra en esta moneda
+    StaffRegistrationCode   NVARCHAR(10)    NOT NULL,   -- código para que un guardia se auto-registre (ver RegisterSecurityStaff en SecurityStaff.cs)
     CreatedAt               DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+-- Un guardia que recién inicia sesión con Auth0 y todavía no tiene fila
+-- en SecurityStaff entra este código (dado por el administrador de la
+-- colonia) para asociarse directo a la colonia — a diferencia de un
+-- residente, un guardia no elige una unidad. Mismo mecanismo que
+-- Units.RegistrationCode, pero a nivel de colonia en vez de unidad.
+CREATE UNIQUE INDEX UX_Neighborhoods_StaffRegistrationCode ON dbo.Neighborhoods(StaffRegistrationCode);
 
 -- ============================================================
 -- Base catalogs
@@ -75,15 +83,16 @@ CREATE TABLE dbo.Units (
 CREATE UNIQUE INDEX UX_Units_RegistrationCode ON dbo.Units(RegistrationCode);
 
 -- dbo.Users se fusionó dentro de dbo.Residents: con pocos tipos de
--- usuario y una misma persona pudiendo ser, a la vez, residente y
--- guardia (o administrador y residente), un Role único por fila no
--- alcanzaba. En vez de una tabla de roles aparte, Residents tiene
--- cuatro columnas booleanas independientes y combinables. UnitId es
--- opcional porque un administrador o guardia "puro" no vive en
--- ninguna unidad; Auth0Sub también es opcional porque no todo
--- residente inicia sesión en el sistema. No se guarda ninguna
--- relación tipo propietario/inquilino con la unidad. Ver la nota al
--- final del archivo.
+-- usuario y una misma persona pudiendo ser, a la vez, administrador y
+-- residente, un Role único por fila no alcanzaba. En vez de una tabla
+-- de roles aparte, Residents tiene tres columnas booleanas
+-- independientes y combinables. UnitId es opcional porque un
+-- administrador "puro" no vive en ninguna unidad; Auth0Sub también es
+-- opcional porque no todo residente inicia sesión en el sistema. No se
+-- guarda ninguna relación tipo propietario/inquilino con la unidad.
+-- Los guardias NO son Residents: viven en dbo.SecurityStaff, ligados
+-- directo a una colonia (no a una unidad) — ver esa tabla más abajo y
+-- la nota al final del archivo.
 CREATE TABLE dbo.Residents (
     ResidentId          INT IDENTITY(1,1) PRIMARY KEY,
     UnitId              INT             NULL REFERENCES dbo.Units(UnitId),   -- NULL: administrador/guardia sin unidad propia
@@ -95,7 +104,6 @@ CREATE TABLE dbo.Residents (
     Administrador       BIT             NOT NULL DEFAULT 0,
     SuperAdministrador  BIT             NOT NULL DEFAULT 0,
     Residente           BIT             NOT NULL DEFAULT 0,
-    Guardia             BIT             NOT NULL DEFAULT 0,
     Active              BIT             NOT NULL DEFAULT 1,
     CreatedAt           DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
@@ -128,18 +136,29 @@ CREATE TABLE dbo.Vehicles (
 -- de unidad en cuanto ese residente se daba de baja o cambiaba de
 -- unidad. Ver la nota al final del archivo.
 
+-- Period es el mes que cubre el pago (siempre normalizado al día 1 de
+-- ese mes por el API, sin importar qué día se mande) — no hay una fila
+-- de Fees puntual contra la cual cobrar (ver más abajo), así que Period
+-- es lo único que identifica "para qué mes es este pago". No es un
+-- UNIQUE (UnitId, Period): una unidad puede acumular varios pagos
+-- rechazados para el mismo mes, solo no puede tener dos activos
+-- (pending/approved) a la vez — esa regla la aplica el API
+-- (Payments.cs → FindConflictingStatusAsync), no una constraint.
 CREATE TABLE dbo.Payments (
     PaymentId           INT IDENTITY(1,1) PRIMARY KEY,
     UnitId              INT             NOT NULL REFERENCES dbo.Units(UnitId),
     ResidentId          INT             NULL REFERENCES dbo.Residents(ResidentId),   -- quién reportó/subió el comprobante; opcional
-    ReceiptBlobPath     NVARCHAR(500)   NOT NULL,
+    ReceiptBlobPath     NVARCHAR(500)   NULL,   -- todavía no hay flujo de subida a Blob Storage; por ahora es una referencia de texto libre
     Status              NVARCHAR(20)    NOT NULL DEFAULT 'pending' CHECK (Status IN ('pending','approved','rejected')),
     RejectionReason     NVARCHAR(500)   NULL,
     ReviewedByUserId    INT             NULL REFERENCES dbo.Residents(ResidentId),   -- quién lo revisó (típicamente un administrador)
     ReviewedAt          DATETIME2       NULL,
     Amount              DECIMAL(10,2)   NOT NULL DEFAULT 0,   -- monto real del comprobante subido
+    Period              DATE            NOT NULL,   -- mes que cubre el pago, normalizado al día 1
     CreatedAt           DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+CREATE INDEX IX_Payments_UnitId_Period ON dbo.Payments(UnitId, Period);
 
 CREATE TABLE dbo.Vendors (
     VendorId        INT IDENTITY(1,1) PRIMARY KEY,
@@ -165,23 +184,49 @@ CREATE TABLE dbo.Expenses (
 -- Security: staff and payroll
 -- ============================================================
 
+-- Un guardia se comporta un poco como un Resident (inicia sesión con
+-- Auth0, ver Auth0Sub) pero no vive en una Unit: pertenece directo a
+-- una colonia (NeighborhoodId), así que no tiene sentido fusionarlo
+-- dentro de Residents — de ahí que Residents ya no tenga una columna
+-- Guardia. El auto-registro es el mismo mecanismo que usan los
+-- residentes (RegisterSecurityStaff en SecurityStaff.cs), pero con el
+-- código de la colonia (Neighborhoods.StaffRegistrationCode) en vez
+-- del código de una unidad.
 CREATE TABLE dbo.SecurityStaff (
     StaffId         INT IDENTITY(1,1) PRIMARY KEY,
     Name            NVARCHAR(150)   NOT NULL,
     Phone           NVARCHAR(30)    NULL,
+    Auth0Sub        NVARCHAR(255)   NULL,   -- NULL: todavía no tiene cuenta para iniciar sesión
     Active          BIT             NOT NULL DEFAULT 1,
     NeighborhoodId  INT             NOT NULL REFERENCES dbo.Neighborhoods(NeighborhoodId),
+    Salary          DECIMAL(10,2)   NOT NULL DEFAULT 0,   -- sueldo base recurrente; junto con Bonuses arma el Amount de cada pago de nómina (ver dbo.Payroll)
+    Bonuses         DECIMAL(10,2)   NOT NULL DEFAULT 0,   -- bono recurrente; editable a mano igual que Salary
     CreatedAt       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
+-- Mismo criterio que UX_Residents_Auth0Sub: índice único filtrado, no un
+-- UNIQUE a secas, porque varias filas pueden no tener cuenta todavía.
+CREATE UNIQUE INDEX UX_SecurityStaff_Auth0Sub ON dbo.SecurityStaff(Auth0Sub) WHERE Auth0Sub IS NOT NULL;
+
+-- Period es DATE (día 1 del mes), mismo criterio que Payments.Period —
+-- antes era CHAR(7) ("2026-09"), se cambió para reusar el mismo patrón
+-- de FirstOfMonth()/DateInput que ya usa el resto del proyecto. Amount
+-- no es un valor libre: el servidor lo fija a SecurityStaff.Salary +
+-- SecurityStaff.Bonuses al crear el registro (ver GetEffectivePayrollAmountAsync
+-- en Payroll.cs, mismo espíritu que GetEffectiveFeeAsync en Payments.cs)
+-- y queda fijo de ahí en más. Paid es un simple booleano (no un Status
+-- con pending/approved/rejected como Payments): acá no hace falta
+-- distinguir un rechazo, solo si ya se le pagó al guardia o no.
 CREATE TABLE dbo.Payroll (
     PayrollId       INT IDENTITY(1,1) PRIMARY KEY,
     StaffId         INT             NOT NULL REFERENCES dbo.SecurityStaff(StaffId),
-    Period          CHAR(7)         NOT NULL,
+    Period          DATE            NOT NULL,
     Amount          DECIMAL(10,2)   NOT NULL,
     Paid            BIT             NOT NULL DEFAULT 0,
     CreatedAt       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+CREATE INDEX IX_Payroll_StaffId_Period ON dbo.Payroll(StaffId, Period);
 
 -- ============================================================
 -- Access: codes, visitor links, log
@@ -217,7 +262,7 @@ CREATE TABLE dbo.AccessLog (
     VisitorLinkId   INT             NULL REFERENCES dbo.VisitorLinks(VisitorLinkId),
     AccessCodeId    INT             NULL REFERENCES dbo.AccessCodes(AccessCodeId),
     EntranceId      INT             NULL REFERENCES dbo.Entrances(EntranceId),
-    GuardUserId     INT             NULL REFERENCES dbo.Residents(ResidentId),
+    GuardUserId     INT             NULL REFERENCES dbo.SecurityStaff(StaffId),   -- quién atendió el acceso (un guardia, no un Resident)
     Result          NVARCHAR(20)    NOT NULL CHECK (Result IN ('granted','denied','pending')),
     DenialReason    NVARCHAR(500)   NULL,
     CreatedAt       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
@@ -280,4 +325,30 @@ CREATE TABLE dbo.Notifications (
 --     auto-registro de residentes desde el login de Auth0 (endpoint
 --     RegisterResident en Residents.cs) sin tener que darlos de alta a
 --     mano desde el dashboard.
+--   - Payments.Period (DATE NOT NULL, día 1 del mes): reemplaza a la
+--     fila de Fees que ya no existe como "para qué mes es este pago".
+--     Payments.ReceiptBlobPath pasó a NULL (sin flujo de subida a Blob
+--     Storage todavía). Se agregó la regla de que una unidad no puede
+--     tener dos pagos activos (pending/approved) para el mismo Period,
+--     aplicada por Payments.cs, no por una constraint de la base.
+--   - Los guardias dejaron de ser un rol booleano en Residents:
+--     Residents.Guardia se eliminó (quedan tres columnas booleanas:
+--     Administrador, SuperAdministrador, Residente). Los guardias
+--     ahora viven exclusivamente en dbo.SecurityStaff, que ganó
+--     Auth0Sub (NULL hasta que el guardia hace su propio registro) y
+--     un índice único filtrado igual al de Residents.Auth0Sub.
+--     Neighborhoods.StaffRegistrationCode (NOT NULL, único) es el
+--     equivalente de Units.RegistrationCode pero a nivel de colonia:
+--     habilita el auto-registro de guardias (endpoint
+--     RegisterSecurityStaff en SecurityStaff.cs), ya que un guardia no
+--     pertenece a una unidad sino directo a la colonia.
+--     AccessLog.GuardUserId ahora referencia dbo.SecurityStaff(StaffId)
+--     en vez de dbo.Residents(ResidentId).
+--   - SecurityStaff.Salary y SecurityStaff.Bonuses (DECIMAL, NOT NULL
+--     DEFAULT 0): sueldo y bono recurrentes del guardia, editables a
+--     mano. dbo.Payroll (ya existía en el esquema, sin API todavía)
+--     pasó su Period de CHAR(7) a DATE (día 1 del mes, mismo criterio
+--     que Payments.Period) y ganó el índice IX_Payroll_StaffId_Period;
+--     su Amount se fija en Payroll.cs a Salary + Bonuses al crear el
+--     registro, igual que Payments.Amount con la cuota efectiva.
 -- ============================================================

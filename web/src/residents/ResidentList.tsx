@@ -3,17 +3,16 @@ import { BooleanField, CreateButton, List, ReferenceField, TextField, TopToolbar
 import { AppDatagrid } from '../components/AppDatagrid'
 import { AppPageTitle } from '../components/AppPageTitle'
 
-// Roles como texto en vez de cuatro columnas de BooleanField: Residents
+// Roles como texto en vez de tres columnas de BooleanField: Residents
 // fusionó dbo.Users y dbo.Residents (ver schema.sql y el diagrama ER) y
 // una misma fila puede tener varias banderas prendidas a la vez
-// (Administrador, SuperAdministrador, Residente, Guardia) — una lista
-// corta separada por comas se lee más rápido en la grilla que cuatro
+// (Administrador, SuperAdministrador, Residente) — una lista corta
+// separada por comas se lee más rápido en la grilla que varias
 // columnas de check.
 const ROLE_LABELS = {
   administrador: 'Administrador',
   superAdministrador: 'Superadministrador',
   residente: 'Residente',
-  guardia: 'Guardia',
 } as const
 
 export function ResidentRolesField() {
@@ -39,9 +38,9 @@ const ResidentListActions = () => {
   )
 }
 
-// unitId puede ser null (administrador o guardia sin unidad propia) —
-// emptyText en el ReferenceField evita que react-admin no muestre nada
-// en esa fila.
+// unitId puede ser null (administrador sin unidad propia) — emptyText
+// en el ReferenceField evita que react-admin no muestre nada en esa
+// fila.
 export function ResidentList() {
   return (
     <List actions={<ResidentListActions />}>

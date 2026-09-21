@@ -10,6 +10,7 @@ namespace Neighborhood.Auth;
 public static class HttpContextCurrentUserExtensions
 {
     private const string ItemsKey = "CurrentUser";
+    private const string StaffItemsKey = "CurrentStaff";
     private const string Auth0SubItemsKey = "Auth0Sub";
 
     public static void SetCurrentUser(this HttpContext httpContext, CurrentUser user)
@@ -17,6 +18,14 @@ public static class HttpContextCurrentUserExtensions
 
     public static CurrentUser? GetCurrentUser(this HttpContext httpContext)
         => httpContext.Items.TryGetValue(ItemsKey, out var value) ? value as CurrentUser : null;
+
+    // Mismo mecanismo que CurrentUser, para la identidad paralela de
+    // guardias (dbo.SecurityStaff en vez de dbo.Residents).
+    public static void SetCurrentStaff(this HttpContext httpContext, CurrentStaff staff)
+        => httpContext.Items[StaffItemsKey] = staff;
+
+    public static CurrentStaff? GetCurrentStaff(this HttpContext httpContext)
+        => httpContext.Items.TryGetValue(StaffItemsKey, out var value) ? value as CurrentStaff : null;
 
     // El "sub" validado se guarda siempre (incluso sin fila en Residents
     // todavía), para que RegisterResident pueda leerlo sin volver a
