@@ -1,23 +1,20 @@
-// Datos de ejemplo para el cascarón visual del panel — el mismo shape que
-// van a tener los endpoints reales (resumen del panel, cargos del mes,
-// actividad reciente) cuando se conecten. Nada de esto viene de la API
-// todavía: es solo para que la pantalla se vea y se sienta terminada.
+// Datos de ejemplo que Dashboard.tsx usaba para el cascarón visual del
+// panel. A esta altura ya no se usan ahí (se sacaron "Cobros del mes",
+// "Actividad reciente" y "Presupuesto del año" del todo, y "Recaudado
+// del mes"/"Gastos del mes" pasaron a datos reales) — quedan en este
+// archivo sin consumidor real más que EstadoCuota.tsx (que importa el
+// tipo EstadoCargo), sin borrarse porque eso implicaría pedir permiso de
+// borrado sobre la carpeta del usuario. Si en algún momento se quiere
+// limpiar del todo, este archivo y components/EstadoCuota.tsx pueden
+// borrarse juntos.
 
 export type EstadoCargo = 'pagado' | 'vencido' | 'pendiente'
 
-export interface KpiSample {
-  label: string
-  value: string
-  detail: string
-  tone?: 'default' | 'critical'
-}
-
-export const kpis: KpiSample[] = [
-  { label: 'Recaudado del mes', value: '$4.812.500', detail: '78% de lo facturado' },
-  { label: 'Morosidad acumulada', value: '$1.364.000', detail: '23 unidades', tone: 'critical' },
-  { label: 'Reportes abiertos', value: '7', detail: '2 fuera de plazo' },
-  { label: 'Visitas de hoy', value: '34', detail: '5 por autorizar' },
-]
+// Los dos KPIs de dinero ("Recaudado del mes" y "Gastos del mes") ya no
+// son de ejemplo: Dashboard.tsx los calcula sumando /api/payments
+// (aprobados), /api/expenses y /api/payroll del mes en curso — ver
+// useGetList en Dashboard.tsx. "Reportes abiertos" y "Visitas de hoy" se
+// sacaron del todo (son parte del grupo "Operación", ya oculto del menú).
 
 export interface CargoSample {
   unidad: string
@@ -55,7 +52,6 @@ export const presupuestoAnual = {
   total: '$47.760.000',
 }
 
-export const panelHeader = {
-  periodo: 'Septiembre 2026',
-  unidades: 148,
-}
+// panelHeader (periodo/unidades) se eliminó: Dashboard.tsx ahora calcula
+// el mes en curso con Intl y lee la cantidad de unidades real de
+// /api/units (useGetList), en vez de quemarlos acá.

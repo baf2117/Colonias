@@ -37,10 +37,35 @@ public class SecurityStaff
         reader.GetDecimal(reader.GetOrdinal("Salary")),
         reader.GetDecimal(reader.GetOrdinal("Bonuses")));
 
+    // Guardias, tercer recurso del grupo Administración: mismo bloqueo total
+    // que Units.cs y Expenses.cs. RegisterSecurityStaff (el auto-registro,
+    // más abajo) queda deliberadamente afuera: lo usa cualquier guardia que
+    // todavía no tiene fila en SecurityStaff.
+    private static IActionResult? RequireAdminOrSuperAdmin(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !(currentUser.Administrador || currentUser.SuperAdministrador))
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo un administrador puede acceder a los guardias.",
+                message = "Solo un administrador puede acceder a los guardias.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+        return null;
+    }
+
     [Function("GetSecurityStaff")]
     public async Task<IActionResult> GetList(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "security-staff")] HttpRequest req)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         int start = 0, end = 24;
         if (req.Query.TryGetValue("range", out var rangeRaw))
         {
@@ -168,6 +193,12 @@ public class SecurityStaff
     public async Task<IActionResult> GetOne(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "security-staff/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
@@ -189,6 +220,12 @@ public class SecurityStaff
     public async Task<IActionResult> Create(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "security-staff")] HttpRequest req)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<CreateSecurityStaffBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -229,6 +266,12 @@ public class SecurityStaff
     public async Task<IActionResult> Update(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "security-staff/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<UpdateSecurityStaffBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -266,6 +309,12 @@ public class SecurityStaff
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "security-staff/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();

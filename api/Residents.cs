@@ -60,10 +60,42 @@ public class Residents
         reader.GetBoolean(reader.GetOrdinal("Active")),
         reader.IsDBNull(reader.GetOrdinal("Auth0Sub")) ? null : reader.GetString(reader.GetOrdinal("Auth0Sub")));
 
+    // A diferencia de Neighborhoods (donde GetList/GetOne quedan abiertos
+    // porque cualquier rol necesita el selector de colonia y la moneda),
+    // acá el usuario pidió explícitamente que el directorio completo
+    // -listar, ver, crear, editar, borrar- sea solo para Administrador o
+    // SuperAdministrador. Eso significa que UnitShow (sección de
+    // residentes de una unidad) y PaymentShow/PaymentList (nombre del
+    // residente que pagó) van a mostrar esos campos vacíos para
+    // guardias/residentes, que es la consecuencia esperada de un pedido
+    // de privacidad y no un caso a mitigar. RegisterResident (el
+    // auto-registro) queda deliberadamente afuera de este check: lo usa
+    // cualquier usuario de Auth0 que todavía no tiene fila en Residents.
+    private static IActionResult? RequireAdminOrSuperAdmin(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !(currentUser.Administrador || currentUser.SuperAdministrador))
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo un administrador puede acceder al directorio de residentes.",
+                message = "Solo un administrador puede acceder al directorio de residentes.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+        return null;
+    }
+
     [Function("GetResidents")]
     public async Task<IActionResult> GetList(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "residents")] HttpRequest req)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         int start = 0, end = 24;
         if (req.Query.TryGetValue("range", out var rangeRaw))
         {
@@ -194,6 +226,12 @@ public class Residents
     public async Task<IActionResult> GetOne(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "residents/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
@@ -223,6 +261,12 @@ public class Residents
     public async Task<IActionResult> Create(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "residents")] HttpRequest req)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<CreateResidentBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -273,6 +317,12 @@ public class Residents
     public async Task<IActionResult> Update(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "residents/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<UpdateResidentBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -323,6 +373,12 @@ public class Residents
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "residents/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();

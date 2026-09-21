@@ -1,14 +1,20 @@
 import { Box, List, ListSubheader, Typography } from '@mui/material'
-import { Menu } from 'react-admin'
+import { Menu, usePermissions } from 'react-admin'
+import type { Permissions } from '../authProvider'
+import { isAdminOrSuperAdmin, isSuperAdministrador } from '../components/RequireRole'
 
-// Sidebar calcada del Design: tres grupos (General / Finanzas / Operación),
-// más "SuperUsuario" arriba de todo y, ahora, "Administración" entre
-// General y Finanzas para las pantallas de gestión de la colonia en sí
-// (Unidades y Gastos). "Inicio", "Cuotas y pagos" (ahora un recurso real
-// contra /api/payments, ya no el cascarón de FeesShell), "Colonia",
-// "Unidades", "Gastos" y "Directorio de residentes" tienen pantalla real
-// hoy — el resto son placeholders visibles pero sin navegación, a
-// propósito: mejor eso que un link que lleva a una pantalla en blanco.
+// Sidebar calcada del Design: originalmente tres grupos (General /
+// Finanzas / Operación) más "SuperUsuario" arriba de todo y
+// "Administración" entre General y Finanzas para las pantallas de
+// gestión de la colonia en sí (Unidades, Gastos y Guardias). "Operación"
+// se sacó del todo (ver más abajo, junto al array de grupos): eran puros
+// placeholders de funcionalidad que no se va a construir por ahora.
+// "Inicio", "Cuotas y pagos" (ahora un recurso real contra /api/payments,
+// ya no el cascarón de FeesShell), "Colonia", "Unidades", "Gastos",
+// "Guardias" y "Directorio de residentes" tienen pantalla real hoy — el
+// resto de Finanzas ("Estado de cuenta", "Presupuesto") son placeholders
+// visibles pero sin navegación, a propósito: mejor eso que un link que
+// lleva a una pantalla en blanco.
 //
 // "Gastos" no tiene un ítem hermano de "Proveedores": los proveedores
 // (dbo.Vendors) se dan de alta al vuelo desde el propio formulario de
@@ -23,12 +29,20 @@ import { Menu } from 'react-admin'
 // "Cuotas y pagos" sí sigue existiendo como recurso: es dbo.Payments,
 // contra qué mes y unidad se registra un comprobante — ver payments/.
 //
-// SuperUsuario es un nivel aparte (todavía sin ningún control de permisos:
-// eso llega después) para las pantallas de administración de la
-// plataforma en sí — por ahora, la gestión de Colonias. Administración,
-// en cambio, es del lado del administrador de una colonia (todavía sin
-// distinción de permisos tampoco).
-type Item = { text: string; to?: string }
+// Permisos por rol (ver también components/RequireRole.tsx y la sección
+// "Permisos por rol" del documento de arquitectura): "SuperUsuario" se
+// oculta entero si el usuario no es superadministrador
+// (isSuperAdministrador), y "Administración" (Unidades, Gastos,
+// Guardias) más "Directorio de residentes" dentro de General se ocultan
+// si no es administrador ni superadministrador (isAdminOrSuperAdmin,
+// marcado por ítem con Item.adminOnly — Administración termina sin
+// ítems visibles para otros roles, así que el grupo entero desaparece,
+// ver el filtro de grupos vacíos más abajo). La protección real vive en
+// el backend (RequireSuperAdministrador/RequireAdminOrSuperAdmin en cada
+// api/*.cs) y en los HOC requireSuperAdmin/requireAdminOrSuperAdmin que
+// envuelven las pantallas en App.tsx — esto es solo para no mostrar un
+// link que de todos modos va a terminar en "acceso denegado".
+type Item = { text: string; to?: string; adminOnly?: boolean }
 
 const groups: { label: string; items: Item[] }[] = [
   {
@@ -37,14 +51,14 @@ const groups: { label: string; items: Item[] }[] = [
   },
   {
     label: 'General',
-    items: [{ text: 'Inicio', to: '/' }, { text: 'Directorio de residentes', to: '/residents' }],
+    items: [{ text: 'Inicio', to: '/' }, { text: 'Directorio de residentes', to: '/residents', adminOnly: true }],
   },
   {
     label: 'Administración',
     items: [
-      { text: 'Unidades', to: '/units' },
-      { text: 'Gastos', to: '/expenses' },
-      { text: 'Guardias', to: '/security-staff' },
+      { text: 'Unidades', to: '/units', adminOnly: true },
+      { text: 'Gastos', to: '/expenses', adminOnly: true },
+      { text: 'Guardias', to: '/security-staff', adminOnly: true },
     ],
   },
   {
@@ -55,15 +69,10 @@ const groups: { label: string; items: Item[] }[] = [
       { text: 'Presupuesto' },
     ],
   },
-  {
-    label: 'Operación',
-    items: [
-      { text: 'Visitas y acceso' },
-      { text: 'Mantenimiento' },
-      { text: 'Incidencias' },
-      { text: 'Documentos' },
-    ],
-  },
+  // El grupo "Operación" (Visitas y acceso, Mantenimiento, Incidencias,
+  // Documentos) se sacó del menú a pedido del usuario: son
+  // funcionalidades que todavía no se van a implementar, así que ni
+  // siquiera tiene sentido mostrarlas como placeholder "próximamente".
 ]
 
 function PlaceholderItem({ text }: { text: string }) {
@@ -83,11 +92,29 @@ function PlaceholderItem({ text }: { text: string }) {
 }
 
 export function AppMenu() {
+  const { permissions } = usePermissions<Permissions>()
+  const resolvedPermissions = permissions ?? null
+  // Mismo criterio que el grupo SuperUsuario, pero a nivel de ítem: acá
+  // "Directorio de residentes" convive con "Inicio" (visible para
+  // cualquiera) dentro del mismo grupo General, así que el filtro tiene
+  // que aplicarse ítem por ítem, no ocultando el grupo entero.
+  const visibleGroups = groups
+    .filter((group) => group.label !== 'SuperUsuario' || isSuperAdministrador(resolvedPermissions))
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.adminOnly || isAdminOrSuperAdmin(resolvedPermissions)),
+    }))
+    // Administración hoy tiene todos sus ítems marcados adminOnly, así que
+    // para cualquier otro rol queda sin ítems — hay que sacar el grupo
+    // entero en ese caso, si no el subheader "ADMINISTRACIÓN" queda
+    // flotando sin nada debajo.
+    .filter((group) => group.items.length > 0)
+
   return (
     // pt: un poco de aire entre el borde del menú superior y el primer
     // grupo, para que no arranque pegado.
     <Menu sx={{ pt: 2 }}>
-      {groups.map((group) => (
+      {visibleGroups.map((group) => (
         <List
           key={group.label}
           dense

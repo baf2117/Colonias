@@ -94,8 +94,14 @@ public class Payroll
         }
 
         // filter.staffId: lo que usa SecurityStaffShow para listar la
-        // nómina de un guardia puntual (ReferenceManyField).
+        // nómina de un guardia puntual (ReferenceManyField). filter.month /
+        // filter.year: mes y año de Period (MONTH(Period)/YEAR(Period)),
+        // mismo criterio que Payments.cs/Expenses.cs — lo usa el Panel
+        // general para sumar los pagos a guardias del mes en curso dentro
+        // del KPI "Gastos del mes".
         int? staffIdFilter = null;
+        int? monthFilter = null;
+        int? yearFilter = null;
         if (req.Query.TryGetValue("filter", out var filterRaw))
         {
             try
@@ -105,6 +111,14 @@ public class Payroll
                 {
                     staffIdFilter = sId;
                 }
+                if (filterDoc.RootElement.TryGetProperty("month", out var mEl) && mEl.TryGetInt32(out var mVal))
+                {
+                    monthFilter = mVal;
+                }
+                if (filterDoc.RootElement.TryGetProperty("year", out var yEl) && yEl.TryGetInt32(out var yVal))
+                {
+                    yearFilter = yVal;
+                }
             }
             catch (JsonException)
             {
@@ -112,7 +126,27 @@ public class Payroll
             }
         }
 
-        var whereSql = staffIdFilter is not null ? "WHERE StaffId = @staffId" : "";
+        var whereClauses = new List<string>();
+        if (staffIdFilter is not null)
+        {
+            whereClauses.Add("StaffId = @staffId");
+        }
+        if (monthFilter is not null)
+        {
+            whereClauses.Add("MONTH(Period) = @month");
+        }
+        if (yearFilter is not null)
+        {
+            whereClauses.Add("YEAR(Period) = @year");
+        }
+        var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
+
+        void AddFilterParams(Microsoft.Data.SqlClient.SqlCommand cmd)
+        {
+            if (staffIdFilter is not null) cmd.Parameters.AddWithValue("@staffId", staffIdFilter.Value);
+            if (monthFilter is not null) cmd.Parameters.AddWithValue("@month", monthFilter.Value);
+            if (yearFilter is not null) cmd.Parameters.AddWithValue("@year", yearFilter.Value);
+        }
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
@@ -121,10 +155,7 @@ public class Payroll
         await using (var countCmd = connection.CreateCommand())
         {
             countCmd.CommandText = $"SELECT COUNT(*) FROM dbo.Payroll {whereSql}";
-            if (staffIdFilter is not null)
-            {
-                countCmd.Parameters.AddWithValue("@staffId", staffIdFilter.Value);
-            }
+            AddFilterParams(countCmd);
             total = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
         }
 
@@ -139,10 +170,7 @@ public class Payroll
                 {whereSql}
                 ORDER BY {sortField} {sortDir}
                 OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY";
-            if (staffIdFilter is not null)
-            {
-                cmd.Parameters.AddWithValue("@staffId", staffIdFilter.Value);
-            }
+            AddFilterParams(cmd);
             cmd.Parameters.AddWithValue("@offset", start);
             cmd.Parameters.AddWithValue("@limit", Math.Max(end - start + 1, 1));
 

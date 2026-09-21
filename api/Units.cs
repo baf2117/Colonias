@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Neighborhood.Auth;
 using Neighborhood.Database;
 
 namespace Neighborhood;
@@ -61,10 +62,38 @@ public class Units
         return new string(chars);
     }
 
+    // Unidades vive en el grupo Administración del menú, junto con Gastos y
+    // Guardias: el usuario pidió que toda esa sección (listar, ver, crear,
+    // editar, borrar) sea solo para Administrador/SuperAdministrador,
+    // mismo criterio de bloqueo total que ya se usó en Residents.cs. Eso
+    // implica que PaymentShow/PaymentList (ReferenceField de unidad) van a
+    // mostrar ese campo vacío para otros roles — consecuencia aceptada,
+    // igual que pasó con el nombre del residente en Payments.
+    private static IActionResult? RequireAdminOrSuperAdmin(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !(currentUser.Administrador || currentUser.SuperAdministrador))
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo un administrador puede acceder a las unidades.",
+                message = "Solo un administrador puede acceder a las unidades.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+        return null;
+    }
+
     [Function("GetUnits")]
     public async Task<IActionResult> GetList(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "units")] HttpRequest req)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         int start = 0, end = 9;
         if (req.Query.TryGetValue("range", out var rangeRaw))
         {
@@ -138,6 +167,12 @@ public class Units
     public async Task<IActionResult> GetOne(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "units/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
@@ -159,6 +194,12 @@ public class Units
     public async Task<IActionResult> Create(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "units")] HttpRequest req)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<CreateUnitBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -214,6 +255,12 @@ public class Units
     public async Task<IActionResult> Update(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "units/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<UpdateUnitBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -255,6 +302,12 @@ public class Units
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "units/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();

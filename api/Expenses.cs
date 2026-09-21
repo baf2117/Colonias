@@ -45,6 +45,33 @@ public class Expenses
         reader.GetDateTime(reader.GetOrdinal("Date")),
         reader.GetInt32(reader.GetOrdinal("RegisteredByUserId")));
 
+    // Gastos: se probó bloqueando también la lectura (igual que Unidades y
+    // Guardias), pero eso rompía el KPI "Gastos del mes" del Panel general
+    // para cualquier residente sin rol de administrador — el usuario pidió
+    // explícitamente poder ver esa suma sin poder editar ni crear gastos.
+    // Por eso GetList/GetOne quedan abiertos a cualquier usuario
+    // autenticado (mismo criterio que Neighborhoods.cs: separar lectura de
+    // escritura) y solo Create/Update/Delete quedan detrás de
+    // RequireAdminOrSuperAdmin. Esto no abre la pantalla de Gastos en sí:
+    // ExpenseList/Create/Show/Edit siguen envueltas en
+    // requireAdminOrSuperAdmin en App.tsx, así que un residente sigue sin
+    // poder navegar a /expenses ni ver el detalle de cada gasto — solo la
+    // llamada agregada que hace el dashboard para sumar el total.
+    private static IActionResult? RequireAdminOrSuperAdmin(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !(currentUser.Administrador || currentUser.SuperAdministrador))
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo un administrador puede administrar los gastos.",
+                message = "Solo un administrador puede administrar los gastos.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+        return null;
+    }
+
     [Function("GetExpenses")]
     public async Task<IActionResult> GetList(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "expenses")] HttpRequest req)
@@ -214,6 +241,12 @@ public class Expenses
     public async Task<IActionResult> Create(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "expenses")] HttpRequest req)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var currentUser = req.HttpContext.GetCurrentUser();
         if (currentUser is null)
         {
@@ -267,6 +300,12 @@ public class Expenses
     public async Task<IActionResult> Update(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "expenses/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<UpdateExpenseBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -303,6 +342,12 @@ public class Expenses
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "expenses/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireAdminOrSuperAdmin(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();

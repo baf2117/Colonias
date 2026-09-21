@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Neighborhood.Auth;
 using Neighborhood.Database;
 
 namespace Neighborhood;
@@ -70,6 +71,29 @@ public class Neighborhoods
             chars[i] = StaffRegistrationCodeAlphabet[Random.Shared.Next(StaffRegistrationCodeAlphabet.Length)];
         }
         return new string(chars);
+    }
+
+    // Colonia es la pantalla de "SuperUsuario": crear, editar o borrar una
+    // colonia es una acción de plataforma, no de administración normal.
+    // GetList/GetOne quedan abiertos a cualquier usuario autenticado
+    // (residente o guardia, ya filtrado por JwtAuthenticationMiddleware) a
+    // propósito: otros recursos los necesitan como referencia (selector de
+    // colonia al crear Unidad/Guardia/Proveedor, moneda para formatear
+    // montos en Pagos/Gastos/Sueldos/Nómina) — restringir la lectura
+    // rompería todo eso para cualquiera que no sea superadministrador.
+    private static IActionResult? RequireSuperAdministrador(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !currentUser.SuperAdministrador)
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo un superadministrador puede administrar colonias.",
+                message = "Solo un superadministrador puede administrar colonias.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+        return null;
     }
 
     [Function("GetNeighborhoods")]
@@ -180,6 +204,12 @@ public class Neighborhoods
     public async Task<IActionResult> Create(
         [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "neighborhoods")] HttpRequest req)
     {
+        var forbidden = RequireSuperAdministrador(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<CreateNeighborhoodBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -242,6 +272,12 @@ public class Neighborhoods
     public async Task<IActionResult> Update(
         [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "neighborhoods/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireSuperAdministrador(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         var body = await JsonSerializer.DeserializeAsync<UpdateNeighborhoodBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -283,6 +319,12 @@ public class Neighborhoods
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "neighborhoods/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireSuperAdministrador(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();

@@ -3,6 +3,7 @@ import { CssBaseline, ThemeProvider } from '@mui/material'
 import { createTheme } from '@mui/material/styles'
 import { Admin, Resource } from 'react-admin'
 import { buildAuthProvider } from './authProvider'
+import { requireAdminOrSuperAdmin, requireSuperAdmin } from './components/RequireRole'
 import { buildDataProvider } from './dataProvider'
 import Dashboard from './dashboard/Dashboard'
 import { ExpenseCreate } from './expenses/ExpenseCreate'
@@ -110,25 +111,52 @@ export default function App() {
       layout={AppLayout}
       dashboard={Dashboard}
     >
-      <Resource name="units" list={UnitList} create={UnitCreate} show={UnitShow} edit={UnitEdit} />
+      {/* Unidades, primer recurso del grupo Administración: solo
+          Administrador/SuperAdministrador puede verlo o administrarlo
+          (requireAdminOrSuperAdmin acá, RequireAdminOrSuperAdmin en
+          api/Units.cs es la protección real). */}
+      <Resource
+        name="units"
+        list={requireAdminOrSuperAdmin(UnitList)}
+        create={requireAdminOrSuperAdmin(UnitCreate)}
+        show={requireAdminOrSuperAdmin(UnitShow)}
+        edit={requireAdminOrSuperAdmin(UnitEdit)}
+      />
+      {/* Solo un superadministrador puede administrar colonias: el sidebar
+          ya oculta este ítem para cualquier otro rol (AppMenu.tsx), pero
+          alguien podría igual navegar directo a /neighborhoods escribiendo
+          la URL — requireSuperAdmin bloquea la pantalla en ese caso, y el
+          API (RequireSuperAdministrador en Neighborhoods.cs) es la
+          protección real detrás de las dos. */}
       <Resource
         name="neighborhoods"
-        list={NeighborhoodList}
-        create={NeighborhoodCreate}
-        show={NeighborhoodShow}
-        edit={NeighborhoodEdit}
+        list={requireSuperAdmin(NeighborhoodList)}
+        create={requireSuperAdmin(NeighborhoodCreate)}
+        show={requireSuperAdmin(NeighborhoodShow)}
+        edit={requireSuperAdmin(NeighborhoodEdit)}
       />
       {/* dbo.Residents es la fusión de lo que antes eran dbo.Users y
           dbo.Residents (ver schema.sql y el diagrama ER) — este es el
-          "Directorio de residentes" del menú (ver AppMenu.tsx). */}
+          "Directorio de residentes" del menú (ver AppMenu.tsx). Solo
+          Administrador/SuperAdministrador puede verlo (requireAdminOrSuperAdmin
+          en el frontend, RequireAdminOrSuperAdmin en api/Residents.cs es la
+          protección real). */}
       <Resource
         name="residents"
-        list={ResidentList}
-        create={ResidentCreate}
-        show={ResidentShow}
-        edit={ResidentEdit}
+        list={requireAdminOrSuperAdmin(ResidentList)}
+        create={requireAdminOrSuperAdmin(ResidentCreate)}
+        show={requireAdminOrSuperAdmin(ResidentShow)}
+        edit={requireAdminOrSuperAdmin(ResidentEdit)}
       />
-      <Resource name="expenses" list={ExpenseList} create={ExpenseCreate} show={ExpenseShow} edit={ExpenseEdit} />
+      {/* Gastos, igual que Unidades y Guardias en Administración: mismo
+          bloqueo a Administrador/SuperAdministrador. */}
+      <Resource
+        name="expenses"
+        list={requireAdminOrSuperAdmin(ExpenseList)}
+        create={requireAdminOrSuperAdmin(ExpenseCreate)}
+        show={requireAdminOrSuperAdmin(ExpenseShow)}
+        edit={requireAdminOrSuperAdmin(ExpenseEdit)}
+      />
       {/* Sin pantallas propias a propósito: los proveedores se crean al vuelo
           desde ExpenseCreate/ExpenseEdit (ver vendors/CreateVendorDialog.tsx),
           no en una sección de "Proveedores" aparte. Este registro es lo que
@@ -143,13 +171,15 @@ export default function App() {
       {/* Guardias (dbo.SecurityStaff): no son Residents, viven ligados
           directo a una colonia (NeighborhoodId), no a una unidad. Ver
           api/SecurityStaff.cs y el auto-registro paralelo al de
-          residentes en registration/RegisterSecurityStaff.tsx. */}
+          residentes en registration/RegisterSecurityStaff.tsx. Tercer
+          recurso de Administración, mismo bloqueo a
+          Administrador/SuperAdministrador que Unidades y Gastos. */}
       <Resource
         name="security-staff"
-        list={SecurityStaffList}
-        create={SecurityStaffCreate}
-        show={SecurityStaffShow}
-        edit={SecurityStaffEdit}
+        list={requireAdminOrSuperAdmin(SecurityStaffList)}
+        create={requireAdminOrSuperAdmin(SecurityStaffCreate)}
+        show={requireAdminOrSuperAdmin(SecurityStaffShow)}
+        edit={requireAdminOrSuperAdmin(SecurityStaffEdit)}
       />
       {/* Nómina de guardias (dbo.Payroll): sin list ni menú propio a
           propósito — se registra desde la misma vista de un guardia
