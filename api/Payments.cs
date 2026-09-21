@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Neighborhood.Auth;
 using Neighborhood.Database;
+using Neighborhood.Email;
 using Neighborhood.Storage;
 
 namespace Neighborhood;
@@ -646,13 +647,115 @@ public class Payments
         cmd.Parameters.AddWithValue("@period", body?.Period is not null ? FirstOfMonth(body.Period.Value) : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
 
-        await using var reader = await cmd.ExecuteReaderAsync();
-        if (!await reader.ReadAsync())
+        PaymentDto updated;
+        await using (var reader = await cmd.ExecuteReaderAsync())
         {
-            return new NotFoundResult();
+            if (!await reader.ReadAsync())
+            {
+                return new NotFoundResult();
+            }
+            updated = Read(reader);
         }
 
-        return new OkObjectResult(Read(reader));
+        // Aviso por correo de que un pago quedó aprobado/rechazado --
+        // solo cuando esta llamada es una revisión nueva de verdad
+        // (isNewReview, calculado arriba), nunca en una edición que no
+        // toca Status. Un correo que falla no debe tumbar la
+        // actualización del pago, que ya quedó guardada: se loguea y se
+        // sigue (ver SendPaymentReviewEmailAsync).
+        if (isNewReview)
+        {
+            await SendPaymentReviewEmailAsync(connection, updated);
+        }
+
+        return new OkObjectResult(updated);
+    }
+
+    // Nombres de mes en español, a mano: evita depender de que el
+    // runtime de Azure Functions tenga cargados los datos de
+    // globalización de una cultura específica (CultureInfo("es-...")
+    // puede no estar disponible según cómo esté empaquetado el host).
+    private static readonly string[] SpanishMonths =
+    {
+        "enero", "febrero", "marzo", "abril", "mayo", "junio",
+        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+    };
+
+    private static string FormatPeriod(DateTime period) => $"{SpanishMonths[period.Month - 1]} de {period.Year}";
+
+    // Le avisa al residente del pago que su comprobante fue revisado.
+    // Busca su nombre/correo en dbo.Residents (Payments no los guarda
+    // directo) y la moneda de su unidad (Units -> Neighborhoods, mismo
+    // salto que ya hace el resto del proyecto para resolver moneda) --
+    // ambas son consultas puntuales sobre un solo pago, no una lista, así
+    // que no vale el mismo reparo de costo que tiene resolver moneda por
+    // fila en PaymentList. Si el residente no tiene correo cargado, no
+    // hay a quién avisarle: se corta ahí, no es un error.
+    private async Task SendPaymentReviewEmailAsync(Microsoft.Data.SqlClient.SqlConnection connection, PaymentDto payment)
+    {
+        if (payment.ResidentId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            string? residentName = null;
+            string? residentEmail = null;
+
+            await using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = "SELECT Name, Email FROM dbo.Residents WHERE ResidentId = @residentId";
+                cmd.Parameters.AddWithValue("@residentId", payment.ResidentId.Value);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync() && !reader.IsDBNull(reader.GetOrdinal("Email")))
+                {
+                    residentName = reader.GetString(reader.GetOrdinal("Name"));
+                    residentEmail = reader.GetString(reader.GetOrdinal("Email"));
+                }
+            }
+
+            if (residentEmail is null)
+            {
+                return;
+            }
+
+            string? currency = null;
+            await using (var cmd = connection.CreateCommand())
+            {
+                cmd.CommandText = @"
+                    SELECT N.Currency FROM dbo.Units U
+                    JOIN dbo.Neighborhoods N ON N.NeighborhoodId = U.NeighborhoodId
+                    WHERE U.UnitId = @unitId";
+                cmd.Parameters.AddWithValue("@unitId", payment.UnitId);
+                currency = (await cmd.ExecuteScalarAsync()) as string;
+            }
+
+            var period = FormatPeriod(payment.Period);
+            var isApproved = payment.Status == "approved";
+            var amountText = currency is null ? payment.Amount.ToString("F2") : $"{payment.Amount:F2} {currency}";
+
+            var subject = isApproved
+                ? $"Tu pago de {period} fue aprobado"
+                : $"Tu pago de {period} fue rechazado";
+            var htmlContent = isApproved
+                ? $"<p>Hola {residentName},</p><p>Tu pago correspondiente a <strong>{period}</strong> por <strong>{amountText}</strong> fue <strong>aprobado</strong>.</p>"
+                : $"<p>Hola {residentName},</p><p>Tu pago correspondiente a <strong>{period}</strong> fue <strong>rechazado</strong>.</p>"
+                    + (string.IsNullOrWhiteSpace(payment.RejectionReason) ? "" : $"<p>Motivo: {payment.RejectionReason}</p>")
+                    + "<p>Podés cargar un nuevo comprobante para el mismo mes desde el sistema.</p>";
+
+            var sendResult = await EmailService.SendAsync(residentEmail, residentName, subject, htmlContent);
+            if (!sendResult.Success)
+            {
+                _logger.LogWarning(
+                    "No se pudo enviar el correo de revisión del pago {PaymentId}: {StatusCode} {Body}",
+                    payment.Id, sendResult.StatusCode, sendResult.ResponseBody);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error al enviar el correo de revisión del pago {PaymentId}", payment.Id);
+        }
     }
 
     [Function("DeletePayment")]

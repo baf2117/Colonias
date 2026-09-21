@@ -37,6 +37,24 @@ function PaymentShowTitle() {
   return <AppPageTitle>{unit ? `${unit.identifier} — ${period}` : period}</AppPageTitle>
 }
 
+// Motivo de rechazo solo tiene algo que decir si el pago está
+// rechazado -- para "pending"/"approved" siempre queda vacío (Payments.cs
+// solo lo completa junto con Status="rejected"), así que mostrarlo ahí
+// era un campo vacío permanente sin ninguna información.
+function RejectionReasonField() {
+  const record = useRecordContext<{ status: string }>()
+  if (record?.status !== 'rejected') {
+    return null
+  }
+  return (
+    <AppFormCol span={3}>
+      <Labeled source="rejectionReason" label="Motivo de rechazo">
+        <TextField source="rejectionReason" emptyText="—" />
+      </Labeled>
+    </AppFormCol>
+  )
+}
+
 // Un residente puro no puede modificar un pago ya cargado (ver
 // api/Payments.cs, UpdatePayment: devuelve 403 si lo intenta) -- acá se
 // le oculta directamente el botón "Editar" en vez de dejar que lo
@@ -57,9 +75,15 @@ const PaymentShowActions = () => {
 // AppFormCol de 12 columnas, solo lectura). ReviewedByUserId/ReviewedAt
 // solo se completan cuando el Status pasó de pending a approved/rejected
 // (ver Payments.cs) — emptyText cubre el caso de un pago aún pendiente.
-// Un residente puro no ve la Unidad en el detalle de su pago -- ya se
-// sabe que es la suya, mostrarla es información redundante (mismo
-// criterio que la columna Unidad de PaymentList, ver RequireRole.tsx).
+// Un residente puro no ve la Unidad ni el Residente en el detalle de su
+// pago -- ya se sabe que es su propia unidad y que el residente es él
+// mismo, mostrarlo es información redundante (mismo criterio que la
+// columna Unidad de PaymentList, ver RequireRole.tsx). Todos los campos
+// de esta pantalla usan el mismo ancho (span={3}), a pedido del usuario
+// -- ancho fijo y consistente en vez de estirar cada campo para llenar
+// la fila entera, así que algunas filas quedan con espacio libre a la
+// derecha (por ejemplo, la primera fila para un residente puro, que
+// solo tiene Mes y Monto).
 export function PaymentShow() {
   const { permissions } = usePermissions<Permissions>()
   const isResident = isPureResident(permissions ?? null)
@@ -78,19 +102,21 @@ export function PaymentShow() {
               </Labeled>
             </AppFormCol>
           )}
-          <AppFormCol span={isResident ? 4 : 3}>
-            <Labeled source="residentId">
-              <ReferenceField source="residentId" reference="residents" emptyText="—">
-                <TextField source="name" />
-              </ReferenceField>
-            </Labeled>
-          </AppFormCol>
-          <AppFormCol span={isResident ? 4 : 3}>
+          {isResident ? null : (
+            <AppFormCol span={3}>
+              <Labeled source="residentId">
+                <ReferenceField source="residentId" reference="residents" emptyText="—">
+                  <TextField source="name" />
+                </ReferenceField>
+              </Labeled>
+            </AppFormCol>
+          )}
+          <AppFormCol span={3}>
             <Labeled label="Mes">
               <PaymentPeriodField />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={isResident ? 4 : 3}>
+          <AppFormCol span={3}>
             <Labeled source="amount">
               <PaymentAmountField />
             </Labeled>
@@ -103,32 +129,28 @@ export function PaymentShow() {
               <PaymentStatusField />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={5}>
+          <AppFormCol span={3}>
             <Labeled label="Comprobante">
               <PaymentReceiptField />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={4}>
-            <Labeled source="rejectionReason" label="Motivo de rechazo">
-              <TextField source="rejectionReason" emptyText="—" />
-            </Labeled>
-          </AppFormCol>
+          <RejectionReasonField />
         </AppFormRow>
 
         <AppFormRow>
-          <AppFormCol span={4}>
+          <AppFormCol span={3}>
             <Labeled source="reviewedByUserId" label="Revisado por">
               <ReferenceField source="reviewedByUserId" reference="residents" emptyText="—">
                 <TextField source="name" />
               </ReferenceField>
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={4}>
+          <AppFormCol span={3}>
             <Labeled source="reviewedAt" label="Revisado el">
               <DateField source="reviewedAt" showTime emptyText="—" />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={4}>
+          <AppFormCol span={3}>
             <Labeled source="createdAt" label="Registrado el">
               <DateField source="createdAt" showTime />
             </Labeled>
