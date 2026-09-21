@@ -191,6 +191,31 @@ public class Payments
             }
         }
 
+        // Un residente "puro" (Residente = true, sin Administrador ni
+        // SuperAdministrador) solo puede ver los pagos de su propia
+        // unidad: se ignora cualquier filter.unitId que mande el cliente y
+        // se fuerza el suyo (CurrentUser.UnitId), para que no pueda ver
+        // los pagos de otra unidad manipulando la query string — mismo
+        // criterio de "seguridad a nivel de fila resuelta en el código"
+        // que ya documenta el proyecto en vez de RLS de motor. Un
+        // administrador o superadministrador (aunque también sea
+        // Residente) sigue viendo todo, igual que antes. Sin unidad
+        // asignada, un residente puro no tiene nada que ver: se corta acá
+        // mismo con una lista vacía en vez de armar una consulta que de
+        // todos modos no va a matchear ningún UnitId.
+        var currentUser = req.HttpContext.GetCurrentUser();
+        var isPureResident = currentUser is not null && currentUser.Residente && !currentUser.Administrador && !currentUser.SuperAdministrador;
+        if (isPureResident)
+        {
+            if (currentUser!.UnitId is null)
+            {
+                req.HttpContext.Response.Headers["Content-Range"] = "payments 0-0/0";
+                req.HttpContext.Response.Headers["Access-Control-Expose-Headers"] = "Content-Range";
+                return new OkObjectResult(Array.Empty<PaymentDto>());
+            }
+            unitIdFilter = currentUser.UnitId;
+        }
+
         var whereClauses = new List<string>();
         if (unitIdFilter is not null)
         {
@@ -274,7 +299,19 @@ public class Payments
             return new NotFoundResult();
         }
 
-        return new OkObjectResult(Read(reader));
+        var payment = Read(reader);
+
+        // Mismo bloqueo por fila que GetList: un residente puro no puede
+        // pedir un pago de otra unidad por id, ni siquiera adivinando el
+        // número — 404, no 403, para no confirmar que ese id existe.
+        var currentUser = req.HttpContext.GetCurrentUser();
+        var isPureResident = currentUser is not null && currentUser.Residente && !currentUser.Administrador && !currentUser.SuperAdministrador;
+        if (isPureResident && payment.UnitId != currentUser!.UnitId)
+        {
+            return new NotFoundResult();
+        }
+
+        return new OkObjectResult(payment);
     }
 
     public record CreatePaymentBody(int UnitId, int? ResidentId, string? ReceiptBlobPath, string? Status, string? RejectionReason, DateTime Period);
@@ -286,7 +323,7 @@ public class Payments
         var body = await JsonSerializer.DeserializeAsync<CreatePaymentBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-        if (body is null || body.UnitId <= 0)
+        if (body is null)
         {
             return new BadRequestObjectResult(new { error = "UnitId is required.", message = "UnitId is required." });
         }
@@ -295,10 +332,49 @@ public class Payments
             return new BadRequestObjectResult(new { error = "Period is required.", message = "Period is required." });
         }
 
-        var status = string.IsNullOrWhiteSpace(body.Status) ? "pending" : body.Status.ToLowerInvariant();
-        if (!ValidStatuses.Contains(status))
+        // Un residente puro (Residente=true, sin Administrador ni
+        // SuperAdministrador) no elige unidad, residente, estado ni motivo
+        // de rechazo al cargar su comprobante: el servidor los fuerza a
+        // partir de GetCurrentUser() e ignora lo que mande el body para
+        // esos cuatro campos, en vez de confiar en que el frontend los
+        // oculte -- mismo criterio de "seguridad a nivel de fila resuelta
+        // en el código" que ya aplican GetList/GetOne (ver
+        // arquitectura-infraestructura.md). Un pago cargado así siempre
+        // queda "pending": revisarlo y ponerle un motivo de rechazo es
+        // trabajo del administrador desde PaymentEdit, no de quien lo sube.
+        var currentUser = req.HttpContext.GetCurrentUser();
+        var isPureResident = currentUser is not null && currentUser.Residente && !currentUser.Administrador && !currentUser.SuperAdministrador;
+
+        int unitId;
+        int? residentId;
+        string status;
+        string? rejectionReason;
+
+        if (isPureResident)
         {
-            return new BadRequestObjectResult(new { error = "Status must be 'pending', 'approved' or 'rejected'.", message = "Status must be 'pending', 'approved' or 'rejected'." });
+            if (currentUser!.UnitId is null)
+            {
+                return new BadRequestObjectResult(new { error = "No tenés una unidad asignada.", message = "No tenés una unidad asignada." });
+            }
+            unitId = currentUser.UnitId.Value;
+            residentId = currentUser.ResidentId;
+            status = "pending";
+            rejectionReason = null;
+        }
+        else
+        {
+            if (body.UnitId <= 0)
+            {
+                return new BadRequestObjectResult(new { error = "UnitId is required.", message = "UnitId is required." });
+            }
+            unitId = body.UnitId;
+            residentId = body.ResidentId;
+            status = string.IsNullOrWhiteSpace(body.Status) ? "pending" : body.Status.ToLowerInvariant();
+            if (!ValidStatuses.Contains(status))
+            {
+                return new BadRequestObjectResult(new { error = "Status must be 'pending', 'approved' or 'rejected'.", message = "Status must be 'pending', 'approved' or 'rejected'." });
+            }
+            rejectionReason = body.RejectionReason;
         }
 
         var period = FirstOfMonth(body.Period);
@@ -310,14 +386,14 @@ public class Payments
         // para la misma unidad y el mismo mes.
         if (status is "pending" or "approved")
         {
-            var conflict = await FindConflictingStatusAsync(connection, body.UnitId, period, excludePaymentId: null);
+            var conflict = await FindConflictingStatusAsync(connection, unitId, period, excludePaymentId: null);
             if (conflict is not null)
             {
                 return new ConflictObjectResult(new { error = ConflictMessage(conflict), message = ConflictMessage(conflict) });
             }
         }
 
-        var effectiveAmount = await GetEffectiveFeeAsync(connection, body.UnitId);
+        var effectiveAmount = await GetEffectiveFeeAsync(connection, unitId);
         if (effectiveAmount is null)
         {
             return new BadRequestObjectResult(new { error = "Unidad inválida.", message = "Unidad inválida." });
@@ -325,8 +401,8 @@ public class Payments
 
         // Si el administrador lo registra directamente como aprobado o
         // rechazado (ya lo revisó al momento de cargarlo), queda asentado
-        // como revisado por quien lo está creando.
-        var currentUser = req.HttpContext.GetCurrentUser();
+        // como revisado por quien lo está creando. Un residente puro nunca
+        // llega acá con otro estado que no sea "pending" (forzado arriba).
         var reviewedByUserId = status == "pending" ? (int?)null : currentUser?.ResidentId;
         var reviewedAt = status == "pending" ? (DateTime?)null : DateTime.UtcNow;
 
@@ -338,11 +414,11 @@ public class Payments
                 INSERTED.RejectionReason, INSERTED.ReviewedByUserId, INSERTED.ReviewedAt, INSERTED.Amount,
                 INSERTED.Period, INSERTED.CreatedAt
             VALUES (@unitId, @residentId, @receiptBlobPath, @status, @rejectionReason, @reviewedByUserId, @reviewedAt, @amount, @period)";
-        cmd.Parameters.AddWithValue("@unitId", body.UnitId);
-        cmd.Parameters.AddWithValue("@residentId", (object?)body.ResidentId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@unitId", unitId);
+        cmd.Parameters.AddWithValue("@residentId", (object?)residentId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@receiptBlobPath", (object?)body.ReceiptBlobPath ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@status", status);
-        cmd.Parameters.AddWithValue("@rejectionReason", (object?)body.RejectionReason ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@rejectionReason", (object?)rejectionReason ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@reviewedByUserId", (object?)reviewedByUserId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@reviewedAt", (object?)reviewedAt ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@amount", effectiveAmount.Value);

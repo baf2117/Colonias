@@ -1,5 +1,6 @@
 import { Box, Card, Typography } from '@mui/material'
 import { Title, useGetList } from 'react-admin'
+import { MyUnitSection } from './MyUnitSection'
 
 // El mes se calcula del reloj del navegador (Intl, sin tabla de nombres
 // a mano) en vez de venir quemado en sampleData.ts — así "Panel general"
@@ -116,6 +117,11 @@ export default function Dashboard() {
           {!unitsLoading && !unitsError && typeof unitsTotal === 'number' ? ` · ${unitsTotal} UNIDADES` : null}
         </Typography>
       </Box>
+
+      {/* Solo se ve si el usuario actual tiene una unidad asignada (ver
+          MyUnitSection.tsx / GET /api/units/mine) — un guardia o un
+          residente sin unidad no ven nada acá. */}
+      <MyUnitSection />
 
       <Box
         sx={{

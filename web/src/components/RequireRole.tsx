@@ -21,6 +21,18 @@ export const isSuperAdministrador = (permissions: Permissions): boolean =>
 export const isAdminOrSuperAdmin = (permissions: Permissions): boolean =>
   permissions?.kind === 'resident' && (permissions.administrador || permissions.superAdministrador)
 
+// Residente "puro": tiene el rol Residente pero ni Administrador ni
+// SuperAdministrador. Usado en PaymentList.tsx para ocultar el filtro
+// por unidad y la columna Unidad -- el backend (api/Payments.cs) ya
+// fuerza el alcance a la unidad de este usuario, asi que mostrarle un
+// filtro por unidad o una columna Unidad no tendria sentido (siempre va
+// a ser la misma).
+export const isPureResident = (permissions: Permissions): boolean =>
+  permissions?.kind === 'resident' &&
+  permissions.residente &&
+  !permissions.administrador &&
+  !permissions.superAdministrador
+
 function AccessDenied() {
   return (
     <Typography sx={{ p: 4 }} color="text.secondary">

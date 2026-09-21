@@ -8,11 +8,14 @@ import {
   SelectInput,
   SimpleForm,
   TextInput,
+  usePermissions,
   useTranslate,
 } from 'react-admin'
+import type { Permissions } from '../authProvider'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { isPureResident } from '../components/RequireRole'
 import { PaymentEffectiveAmountPreview } from './PaymentEffectiveAmountPreview'
 
 const STATUS_CHOICES = [
@@ -41,48 +44,69 @@ const STATUS_CHOICES = [
 //
 // ReviewedByUserId/ReviewedAt no aparecen acá: el servidor los resuelve
 // solo cuando Status no queda en "pending" (ver Payments.cs).
+//
+// Un residente puro (Residente=true, sin Administrador ni
+// SuperAdministrador) no ve Unidad ni Residente -- ya se sabe que es él y
+// su propia unidad, api/Payments.cs los fuerza del lado del servidor y
+// ni siquiera mira lo que mande el formulario para esos dos campos -- ni
+// Estado, porque un pago cargado por un residente siempre nace "pending"
+// (el servidor lo fuerza igual), ni Motivo de rechazo, que es algo que
+// completa el administrador al revisar, no quien sube el comprobante. Es
+// el mismo criterio de "seguridad a nivel de fila resuelta en el código"
+// que ya usan PaymentList/GetList: acá además el propio backend ignora
+// esos cuatro campos si de todos modos llegaran en el body.
 export function PaymentCreate() {
   const translate = useTranslate()
+  const { permissions } = usePermissions<Permissions>()
+  const isResident = isPureResident(permissions ?? null)
   return (
     <Create redirect="list">
       <SimpleForm>
         <AppPageTitle>{translate('resources.payments.name', { smart_count: 1 })}</AppPageTitle>
 
         <AppFormRow>
-          <AppFormCol span={4}>
-            <ReferenceInput source="unitId" reference="units">
-              <AutocompleteInput optionText="identifier" validate={required()} fullWidth />
-            </ReferenceInput>
-          </AppFormCol>
-          <AppFormCol span={4}>
-            <ReferenceInput source="residentId" reference="residents">
-              <AutocompleteInput optionText="name" fullWidth />
-            </ReferenceInput>
-          </AppFormCol>
-          <AppFormCol span={4}>
+          {isResident ? null : (
+            <AppFormCol span={4}>
+              <ReferenceInput source="unitId" reference="units">
+                <AutocompleteInput optionText="identifier" validate={required()} fullWidth />
+              </ReferenceInput>
+            </AppFormCol>
+          )}
+          {isResident ? null : (
+            <AppFormCol span={4}>
+              <ReferenceInput source="residentId" reference="residents">
+                <AutocompleteInput optionText="name" fullWidth />
+              </ReferenceInput>
+            </AppFormCol>
+          )}
+          <AppFormCol span={isResident ? 12 : 4}>
             <DateInput source="period" label="Mes" validate={required()} defaultValue={new Date().toISOString().slice(0, 10)} fullWidth />
           </AppFormCol>
         </AppFormRow>
 
         <AppFormRow>
-          <AppFormCol span={4}>
+          <AppFormCol span={isResident ? 6 : 4}>
             <Labeled label="Monto">
               <PaymentEffectiveAmountPreview />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={4}>
-            <SelectInput source="status" choices={STATUS_CHOICES} defaultValue="pending" fullWidth />
-          </AppFormCol>
-          <AppFormCol span={4}>
+          {isResident ? null : (
+            <AppFormCol span={4}>
+              <SelectInput source="status" choices={STATUS_CHOICES} defaultValue="pending" fullWidth />
+            </AppFormCol>
+          )}
+          <AppFormCol span={isResident ? 6 : 4}>
             <TextInput source="receiptBlobPath" label="Comprobante" fullWidth />
           </AppFormCol>
         </AppFormRow>
 
-        <AppFormRow>
-          <AppFormCol span={12}>
-            <TextInput source="rejectionReason" label="Motivo de rechazo" multiline fullWidth />
-          </AppFormCol>
-        </AppFormRow>
+        {isResident ? null : (
+          <AppFormRow>
+            <AppFormCol span={12}>
+              <TextInput source="rejectionReason" label="Motivo de rechazo" multiline fullWidth />
+            </AppFormCol>
+          </AppFormRow>
+        )}
       </SimpleForm>
     </Create>
   )

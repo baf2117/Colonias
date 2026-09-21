@@ -84,6 +84,51 @@ public class Units
         return null;
     }
 
+    // Autoservicio: cualquier residente puede ver los datos básicos de SU
+    // PROPIA unidad (resuelta del lado del servidor a partir de su propio
+    // Auth0Sub vía GetCurrentUser().UnitId, nunca de un id que mande el
+    // cliente) sin necesitar rol de administrador — el usuario pidió que
+    // el Panel general le muestre a un residente la unidad a la que
+    // pertenece. Por eso esta función NO pasa por RequireAdminOrSuperAdmin
+    // (a diferencia de GetList/GetOne de abajo) y usa un DTO más chico que
+    // UnitDto: sin RegistrationCode, que es un secreto para auto-registrar
+    // OTROS residentes de la unidad y no debería viajar acá. Un guardia
+    // (sin fila en Residents, GetCurrentUser() null) o un residente sin
+    // unidad asignada (UnitId null) reciben 404 — no hay nada que mostrar.
+    public record MyUnitDto(int Id, string Identifier, int NeighborhoodId, string? Address, decimal? FeeAmount);
+
+    private static MyUnitDto ReadMine(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
+        reader.GetInt32(reader.GetOrdinal("UnitId")),
+        reader.GetString(reader.GetOrdinal("Identifier")),
+        reader.GetInt32(reader.GetOrdinal("NeighborhoodId")),
+        reader.IsDBNull(reader.GetOrdinal("Address")) ? null : reader.GetString(reader.GetOrdinal("Address")),
+        reader.IsDBNull(reader.GetOrdinal("FeeAmount")) ? null : reader.GetDecimal(reader.GetOrdinal("FeeAmount")));
+
+    [Function("GetMyUnit")]
+    public async Task<IActionResult> GetMine(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "units/mine")] HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser?.UnitId is null)
+        {
+            return new NotFoundResult();
+        }
+
+        await using var connection = SqlConnectionFactory.Create();
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT UnitId, Identifier, NeighborhoodId, Address, FeeAmount FROM dbo.Units WHERE UnitId = @unitId";
+        cmd.Parameters.AddWithValue("@unitId", currentUser.UnitId.Value);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return new NotFoundResult();
+        }
+
+        return new OkObjectResult(ReadMine(reader));
+    }
+
     [Function("GetUnits")]
     public async Task<IActionResult> GetList(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "units")] HttpRequest req)

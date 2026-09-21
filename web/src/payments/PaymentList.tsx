@@ -10,12 +10,15 @@ import {
   useGetList,
   useGetOne,
   useListContext,
+  usePermissions,
   useTranslate,
 } from 'react-admin'
+import type { Permissions } from '../authProvider'
 import { AppDatagrid } from '../components/AppDatagrid'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { isPureResident } from '../components/RequireRole'
 import { PaymentPeriodField } from './PaymentPeriodField'
 import { PaymentStatusField } from './PaymentStatusField'
 
@@ -155,20 +158,28 @@ function YearFilter() {
 
 const PaymentListActions = () => {
   const translate = useTranslate()
+  const { permissions } = usePermissions<Permissions>()
+  // Un residente puro no elige unidad: el backend (api/Payments.cs) ya le
+  // fuerza la suya, así que el filtro no aporta nada y solo confundiría
+  // (parecería que podría ver otras unidades). Ver isPureResident en
+  // RequireRole.tsx.
+  const showUnitFilter = !isPureResident(permissions ?? null)
   return (
     <TopToolbar sx={{ width: '100%', flexDirection: 'column', alignItems: 'stretch', mt: 3, mb: 1 }}>
       <AppPageTitle sx={{ mb: 0 }}>{translate('resources.payments.name', { smart_count: 2 })}</AppPageTitle>
       <AppFormRow sx={{ mt: 2, alignItems: 'center' }}>
-        <AppFormCol span={3}>
-          <UnitFilter />
-        </AppFormCol>
-        <AppFormCol span={3}>
+        {showUnitFilter ? (
+          <AppFormCol span={3}>
+            <UnitFilter />
+          </AppFormCol>
+        ) : null}
+        <AppFormCol span={showUnitFilter ? 3 : 4}>
           <StatusFilter />
         </AppFormCol>
-        <AppFormCol span={2}>
+        <AppFormCol span={showUnitFilter ? 2 : 3}>
           <MonthFilter />
         </AppFormCol>
-        <AppFormCol span={2}>
+        <AppFormCol span={showUnitFilter ? 2 : 3}>
           <YearFilter />
         </AppFormCol>
         <AppFormCol span={2}>
@@ -186,12 +197,18 @@ const PaymentListActions = () => {
 // Neighborhood) saldría caro en una lista de muchos pagos. PaymentShow sí
 // la resuelve, porque ahí es un solo registro.
 export function PaymentList() {
+  const { permissions } = usePermissions<Permissions>()
+  // Mismo criterio que el filtro de arriba: si todos los pagos listados
+  // son de su propia unidad, la columna Unidad es información repetida.
+  const showUnitColumn = !isPureResident(permissions ?? null)
   return (
     <List actions={<PaymentListActions />} sort={{ field: 'period', order: 'DESC' }}>
       <AppDatagrid rowClick="show" bulkActionButtons={false}>
-        <ReferenceField source="unitId" reference="units">
-          <TextField source="identifier" />
-        </ReferenceField>
+        {showUnitColumn ? (
+          <ReferenceField source="unitId" reference="units">
+            <TextField source="identifier" />
+          </ReferenceField>
+        ) : null}
         <PaymentPeriodField label="Mes" />
         <NumberField source="amount" options={{ minimumFractionDigits: 2 }} />
         <PaymentStatusField label="Estado" />
