@@ -5,6 +5,7 @@ using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Neighborhood.Auth;
 using Neighborhood.Database;
+using Neighborhood.Storage;
 
 namespace Neighborhood;
 
@@ -377,6 +378,19 @@ public class Payments
             rejectionReason = body.RejectionReason;
         }
 
+        // Un residente puro solo puede asociar a su pago un comprobante
+        // que él mismo subió a SU carpeta ("{unitId}/...", ver
+        // GetPaymentReceiptUploadUrl/BlobStorageService.cs) -- si de
+        // algún modo llegara un receiptBlobPath de otra unidad (a mano,
+        // por API), se ignora en silencio en vez de guardarlo. Un
+        // administrador o superadministrador puede seguir mandando
+        // cualquier ruta, igual que antes.
+        var receiptBlobPath = body.ReceiptBlobPath;
+        if (isPureResident && receiptBlobPath is not null && !receiptBlobPath.StartsWith($"{unitId}/", StringComparison.Ordinal))
+        {
+            receiptBlobPath = null;
+        }
+
         var period = FirstOfMonth(body.Period);
 
         await using var connection = SqlConnectionFactory.Create();
@@ -416,7 +430,7 @@ public class Payments
             VALUES (@unitId, @residentId, @receiptBlobPath, @status, @rejectionReason, @reviewedByUserId, @reviewedAt, @amount, @period)";
         cmd.Parameters.AddWithValue("@unitId", unitId);
         cmd.Parameters.AddWithValue("@residentId", (object?)residentId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@receiptBlobPath", (object?)body.ReceiptBlobPath ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@receiptBlobPath", (object?)receiptBlobPath ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@status", status);
         cmd.Parameters.AddWithValue("@rejectionReason", (object?)rejectionReason ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@reviewedByUserId", (object?)reviewedByUserId ?? DBNull.Value);
@@ -429,6 +443,105 @@ public class Payments
         var created = Read(reader);
 
         return new CreatedResult($"/api/payments/{created.Id}", created);
+    }
+
+    public record ReceiptUploadUrlBody(int UnitId, string Extension);
+    public record ReceiptUploadUrlDto(string UploadUrl, string BlobPath, DateTimeOffset ExpiresAt);
+    public record ReceiptViewUrlDto(string Url, DateTimeOffset ExpiresAt);
+
+    // Paso previo a CreatePayment: el que sube el comprobante primero
+    // pide esta URL, sube el archivo directo a Blob Storage con ella (sin
+    // pasar por el Function, ver BlobStorageService.cs), y recién ahí
+    // manda el CreatePayment normal con `receiptBlobPath` ya resuelto --
+    // así el registro en dbo.Payments nunca queda "a medias" (creado sin
+    // comprobante todavía, o con un comprobante que nunca se llegó a
+    // subir). Un residente puro no elige unidad ni nombre de archivo: se
+    // le fuerza la unidad (currentUser.UnitId) y el nombre del blob se
+    // genera acá con un GUID nuevo, mismo criterio de "seguridad a nivel
+    // de fila resuelta en el código" que ya usan GetList/GetOne/CreatePayment.
+    [Function("GetPaymentReceiptUploadUrl")]
+    public async Task<IActionResult> GetReceiptUploadUrl(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "payments/receipt-upload-url")] HttpRequest req)
+    {
+        var body = await JsonSerializer.DeserializeAsync<ReceiptUploadUrlBody>(
+            req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (body is null || string.IsNullOrWhiteSpace(body.Extension))
+        {
+            return new BadRequestObjectResult(new { error = "Extension is required.", message = "Extension is required." });
+        }
+
+        var extension = body.Extension.TrimStart('.').ToLowerInvariant();
+        if (!BlobStorageService.AllowedExtensions.Contains(extension))
+        {
+            return new BadRequestObjectResult(new { error = "Formato de archivo no permitido.", message = "Formato de archivo no permitido." });
+        }
+
+        var currentUser = req.HttpContext.GetCurrentUser();
+        var isPureResident = currentUser is not null && currentUser.Residente && !currentUser.Administrador && !currentUser.SuperAdministrador;
+
+        int unitId;
+        if (isPureResident)
+        {
+            if (currentUser!.UnitId is null)
+            {
+                return new BadRequestObjectResult(new { error = "No tenés una unidad asignada.", message = "No tenés una unidad asignada." });
+            }
+            unitId = currentUser.UnitId.Value;
+        }
+        else
+        {
+            if (body.UnitId <= 0)
+            {
+                return new BadRequestObjectResult(new { error = "UnitId is required.", message = "UnitId is required." });
+            }
+            unitId = body.UnitId;
+        }
+
+        var blobPath = BlobStorageService.NewBlobPath(unitId, extension);
+        var (uploadUrl, expiresAt) = BlobStorageService.GetUploadUrl(blobPath);
+
+        return new OkObjectResult(new ReceiptUploadUrlDto(uploadUrl.ToString(), blobPath, expiresAt));
+    }
+
+    // Para ver un comprobante ya subido (PaymentShow): el contenedor no
+    // tiene lectura pública, así que sin esto no habría forma de mostrar
+    // la imagen/PDF. Mismo bloqueo por fila que GetOne -- un residente
+    // puro solo puede pedir la URL de un pago de su propia unidad, y
+    // 404 (no 403) tanto si el pago no es suyo como si todavía no tiene
+    // comprobante cargado.
+    [Function("GetPaymentReceiptViewUrl")]
+    public async Task<IActionResult> GetReceiptViewUrl(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "payments/{id:int}/receipt-view-url")] HttpRequest req, int id)
+    {
+        await using var connection = SqlConnectionFactory.Create();
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"SELECT {SelectColumns} FROM dbo.Payments WHERE PaymentId = @id";
+        cmd.Parameters.AddWithValue("@id", id);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync())
+        {
+            return new NotFoundResult();
+        }
+
+        var payment = Read(reader);
+
+        var currentUser = req.HttpContext.GetCurrentUser();
+        var isPureResident = currentUser is not null && currentUser.Residente && !currentUser.Administrador && !currentUser.SuperAdministrador;
+        if (isPureResident && payment.UnitId != currentUser!.UnitId)
+        {
+            return new NotFoundResult();
+        }
+
+        var view = BlobStorageService.GetViewUrl(payment.ReceiptBlobPath);
+        if (view is null)
+        {
+            return new NotFoundResult();
+        }
+
+        return new OkObjectResult(new ReceiptViewUrlDto(view.Value.ViewUrl.ToString(), view.Value.ExpiresAt));
     }
 
     public record UpdatePaymentBody(int? UnitId, int? ResidentId, string? ReceiptBlobPath, string? Status, string? RejectionReason, DateTime? Period);
@@ -444,6 +557,24 @@ public class Payments
         if (normalizedStatus is not null && !ValidStatuses.Contains(normalizedStatus))
         {
             return new BadRequestObjectResult(new { error = "Status must be 'pending', 'approved' or 'rejected'.", message = "Status must be 'pending', 'approved' or 'rejected'." });
+        }
+
+        // Un residente puro no puede modificar un pago ya cargado, ni
+        // siquiera el suyo propio: no cambia su estado, su unidad, su
+        // comprobante ni nada -- revisar/editar un pago es trabajo del
+        // administrador. El frontend le oculta el botón "Editar" en
+        // PaymentShow (ver isPureResident en RequireRole.tsx), pero esto
+        // es lo que realmente lo bloquea si alguien llama al API directo.
+        var currentUser = req.HttpContext.GetCurrentUser();
+        var isPureResident = currentUser is not null && currentUser.Residente && !currentUser.Administrador && !currentUser.SuperAdministrador;
+        if (isPureResident)
+        {
+            return new ObjectResult(new
+            {
+                error = "No podés modificar un pago ya cargado.",
+                message = "No podés modificar un pago ya cargado.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
         }
 
         await using var connection = SqlConnectionFactory.Create();
@@ -487,7 +618,6 @@ public class Payments
         // edición que no toca Status (p.ej. corregir el RejectionReason) no
         // le "roba" la revisión a quien ya lo había aprobado antes.
         var isNewReview = normalizedStatus is not null && normalizedStatus != "pending" && normalizedStatus != currentStatus;
-        var currentUser = req.HttpContext.GetCurrentUser();
 
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"

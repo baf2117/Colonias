@@ -17,6 +17,7 @@ import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { isPureResident } from '../components/RequireRole'
 import { PaymentEffectiveAmountPreview } from './PaymentEffectiveAmountPreview'
+import { ReceiptUploadInput } from './ReceiptUploadInput'
 
 const STATUS_CHOICES = [
   { id: 'pending', name: 'Pendiente' },
@@ -45,6 +46,12 @@ const STATUS_CHOICES = [
 // ReviewedByUserId/ReviewedAt no aparecen acá: el servidor los resuelve
 // solo cuando Status no queda en "pending" (ver Payments.cs).
 //
+// Comprobante ya no es un campo de texto libre: ReceiptUploadInput sube
+// el archivo directo a Blob Storage con una URL firmada (SAS) que pide
+// api/Payments.cs (GetPaymentReceiptUploadUrl) ANTES de este submit --
+// el pago recién se crea acá, con `receiptBlobPath` ya apuntando al
+// archivo subido. Ver ReceiptUploadInput.tsx para el detalle.
+//
 // Un residente puro (Residente=true, sin Administrador ni
 // SuperAdministrador) no ve Unidad ni Residente -- ya se sabe que es él y
 // su propia unidad, api/Payments.cs los fuerza del lado del servidor y
@@ -64,48 +71,65 @@ export function PaymentCreate() {
       <SimpleForm>
         <AppPageTitle>{translate('resources.payments.name', { smart_count: 1 })}</AppPageTitle>
 
-        <AppFormRow>
-          {isResident ? null : (
-            <AppFormCol span={4}>
-              <ReferenceInput source="unitId" reference="units">
-                <AutocompleteInput optionText="identifier" validate={required()} fullWidth />
-              </ReferenceInput>
-            </AppFormCol>
-          )}
-          {isResident ? null : (
-            <AppFormCol span={4}>
-              <ReferenceInput source="residentId" reference="residents">
-                <AutocompleteInput optionText="name" fullWidth />
-              </ReferenceInput>
-            </AppFormCol>
-          )}
-          <AppFormCol span={isResident ? 12 : 4}>
-            <DateInput source="period" label="Mes" validate={required()} defaultValue={new Date().toISOString().slice(0, 10)} fullWidth />
-          </AppFormCol>
-        </AppFormRow>
-
-        <AppFormRow>
-          <AppFormCol span={isResident ? 6 : 4}>
-            <Labeled label="Monto">
-              <PaymentEffectiveAmountPreview />
-            </Labeled>
-          </AppFormCol>
-          {isResident ? null : (
-            <AppFormCol span={4}>
-              <SelectInput source="status" choices={STATUS_CHOICES} defaultValue="pending" fullWidth />
-            </AppFormCol>
-          )}
-          <AppFormCol span={isResident ? 6 : 4}>
-            <TextInput source="receiptBlobPath" label="Comprobante" fullWidth />
-          </AppFormCol>
-        </AppFormRow>
-
-        {isResident ? null : (
+        {isResident ? (
+          // Solo tres campos, una sola fila de tres columnas iguales
+          // (span 4 c/u) — Mes ya no necesita ocupar la fila completa
+          // ahora que no comparte con Unidad/Residente.
           <AppFormRow>
-            <AppFormCol span={12}>
-              <TextInput source="rejectionReason" label="Motivo de rechazo" multiline fullWidth />
+            <AppFormCol span={4}>
+              <DateInput source="period" label="Mes" validate={required()} defaultValue={new Date().toISOString().slice(0, 10)} fullWidth />
+            </AppFormCol>
+            <AppFormCol span={4}>
+              <Labeled label="Monto">
+                <PaymentEffectiveAmountPreview />
+              </Labeled>
+            </AppFormCol>
+            <AppFormCol span={4}>
+              <Labeled label="Comprobante">
+                <ReceiptUploadInput source="receiptBlobPath" />
+              </Labeled>
             </AppFormCol>
           </AppFormRow>
+        ) : (
+          <>
+            <AppFormRow>
+              <AppFormCol span={4}>
+                <ReferenceInput source="unitId" reference="units">
+                  <AutocompleteInput optionText="identifier" validate={required()} fullWidth />
+                </ReferenceInput>
+              </AppFormCol>
+              <AppFormCol span={4}>
+                <ReferenceInput source="residentId" reference="residents">
+                  <AutocompleteInput optionText="name" fullWidth />
+                </ReferenceInput>
+              </AppFormCol>
+              <AppFormCol span={4}>
+                <DateInput source="period" label="Mes" validate={required()} defaultValue={new Date().toISOString().slice(0, 10)} fullWidth />
+              </AppFormCol>
+            </AppFormRow>
+
+            <AppFormRow>
+              <AppFormCol span={4}>
+                <Labeled label="Monto">
+                  <PaymentEffectiveAmountPreview />
+                </Labeled>
+              </AppFormCol>
+              <AppFormCol span={4}>
+                <SelectInput source="status" choices={STATUS_CHOICES} defaultValue="pending" fullWidth />
+              </AppFormCol>
+              <AppFormCol span={4}>
+                <Labeled label="Comprobante">
+                  <ReceiptUploadInput source="receiptBlobPath" />
+                </Labeled>
+              </AppFormCol>
+            </AppFormRow>
+
+            <AppFormRow>
+              <AppFormCol span={12}>
+                <TextInput source="rejectionReason" label="Motivo de rechazo" multiline fullWidth />
+              </AppFormCol>
+            </AppFormRow>
+          </>
         )}
       </SimpleForm>
     </Create>
