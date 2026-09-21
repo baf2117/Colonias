@@ -140,9 +140,23 @@ export function PaymentShow() {
         <AppFormRow>
           <AppFormCol span={3}>
             <Labeled source="reviewedByUserId" label="Revisado por">
-              <ReferenceField source="reviewedByUserId" reference="residents" emptyText="—">
-                <TextField source="name" />
-              </ReferenceField>
+              {isResident ? (
+                // El directorio de residentes está bloqueado del todo para
+                // un residente puro (GET /api/residents, ver "Permisos por
+                // rol"), así que el ReferenceField de abajo nunca podía
+                // resolver el nombre del administrador que revisó -- el
+                // campo quedaba en blanco. Además, un residente no tiene
+                // por qué poder entrar a la ficha del administrador (el
+                // link que arma ReferenceField). Por eso para este rol se
+                // usa el nombre ya resuelto del lado del servidor
+                // (Payments.cs hace el JOIN a Residents y lo manda como
+                // reviewedByName) como texto plano, sin ningún link.
+                <TextField source="reviewedByName" emptyText="—" />
+              ) : (
+                <ReferenceField source="reviewedByUserId" reference="residents" emptyText="—">
+                  <TextField source="name" />
+                </ReferenceField>
+              )}
             </Labeled>
           </AppFormCol>
           <AppFormCol span={3}>

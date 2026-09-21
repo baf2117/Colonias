@@ -59,12 +59,34 @@ public class Payments
         DateTime? ReviewedAt,
         decimal Amount,
         DateTime Period,
-        DateTime CreatedAt);
+        DateTime CreatedAt,
+        string? ReviewedByName);
 
+    // Con alias p (Payments), porque el LEFT JOIN con Residents (para
+    // ReviewedByName -- ver más abajo) agrega una tabla con columnas
+    // propias (Residents.UnitId, entre otras) que chocarían con las de
+    // Payments sin el alias. El JOIN es LEFT porque ReviewedByUserId es
+    // opcional (un pago "pending" todavía no tiene revisor).
     private const string SelectColumns =
-        "PaymentId, UnitId, ResidentId, ReceiptBlobPath, Status, RejectionReason, ReviewedByUserId, ReviewedAt, Amount, Period, CreatedAt";
+        "p.PaymentId, p.UnitId, p.ResidentId, p.ReceiptBlobPath, p.Status, p.RejectionReason, p.ReviewedByUserId, p.ReviewedAt, p.Amount, p.Period, p.CreatedAt, r.Name AS ReviewedByName";
 
     private static readonly HashSet<string> ValidStatuses = new(StringComparer.OrdinalIgnoreCase) { "pending", "approved", "rejected" };
+
+    // true si el reader tiene esa columna -- Create/Update leen el
+    // resultado de un OUTPUT INSERTED/DELETED (no puede hacer JOIN), así
+    // que ReviewedByName no está ahí; GetList/GetOne/GetReceiptViewUrl sí
+    // la traen (SelectColumns con el JOIN a Residents).
+    private static bool HasColumn(Microsoft.Data.SqlClient.SqlDataReader reader, string columnName)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (reader.GetName(i).Equals(columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 
     private static PaymentDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
         reader.GetInt32(reader.GetOrdinal("PaymentId")),
@@ -77,7 +99,25 @@ public class Payments
         reader.IsDBNull(reader.GetOrdinal("ReviewedAt")) ? null : reader.GetDateTime(reader.GetOrdinal("ReviewedAt")),
         reader.GetDecimal(reader.GetOrdinal("Amount")),
         reader.GetDateTime(reader.GetOrdinal("Period")),
-        reader.GetDateTime(reader.GetOrdinal("CreatedAt")));
+        reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
+        HasColumn(reader, "ReviewedByName") && !reader.IsDBNull(reader.GetOrdinal("ReviewedByName"))
+            ? reader.GetString(reader.GetOrdinal("ReviewedByName"))
+            : null);
+
+    // Resuelve el nombre de un residente puntual -- se usa para
+    // completar ReviewedByName después de un Create/Update, cuyo OUTPUT
+    // INSERTED no puede traerlo directo (ver Read/HasColumn arriba).
+    private static async Task<string?> GetResidentNameAsync(Microsoft.Data.SqlClient.SqlConnection connection, int? residentId)
+    {
+        if (residentId is null)
+        {
+            return null;
+        }
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Name FROM dbo.Residents WHERE ResidentId = @id";
+        cmd.Parameters.AddWithValue("@id", residentId.Value);
+        return await cmd.ExecuteScalarAsync() as string;
+    }
 
     private static DateTime FirstOfMonth(DateTime date) => new(date.Year, date.Month, 1);
 
@@ -146,13 +186,13 @@ public class Payments
             {
                 sortField = sort[0] switch
                 {
-                    "id" => "PaymentId",
-                    "unitId" => "UnitId",
-                    "status" => "Status",
-                    "amount" => "Amount",
-                    "period" => "Period",
-                    "createdAt" => "CreatedAt",
-                    _ => "Period",
+                    "id" => "p.PaymentId",
+                    "unitId" => "p.UnitId",
+                    "status" => "p.Status",
+                    "amount" => "p.Amount",
+                    "period" => "p.Period",
+                    "createdAt" => "p.CreatedAt",
+                    _ => "p.Period",
                 };
                 sortDir = sort[1].Equals("DESC", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
             }
@@ -218,22 +258,26 @@ public class Payments
             unitIdFilter = currentUser.UnitId;
         }
 
+        // Todas prefijadas con p. (alias de Payments): el LEFT JOIN a
+        // Residents para ReviewedByName agrega una tabla que también
+        // tiene columna UnitId, así que "UnitId = @unitId" a secas sería
+        // ambiguo para SQL Server.
         var whereClauses = new List<string>();
         if (unitIdFilter is not null)
         {
-            whereClauses.Add("UnitId = @unitId");
+            whereClauses.Add("p.UnitId = @unitId");
         }
         if (!string.IsNullOrWhiteSpace(statusFilter))
         {
-            whereClauses.Add("Status = @status");
+            whereClauses.Add("p.Status = @status");
         }
         if (monthFilter is not null)
         {
-            whereClauses.Add("MONTH(Period) = @month");
+            whereClauses.Add("MONTH(p.Period) = @month");
         }
         if (yearFilter is not null)
         {
-            whereClauses.Add("YEAR(Period) = @year");
+            whereClauses.Add("YEAR(p.Period) = @year");
         }
         var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
@@ -251,7 +295,7 @@ public class Payments
         int total;
         await using (var countCmd = connection.CreateCommand())
         {
-            countCmd.CommandText = $"SELECT COUNT(*) FROM dbo.Payments {whereSql}";
+            countCmd.CommandText = $"SELECT COUNT(*) FROM dbo.Payments p {whereSql}";
             AddFilterParams(countCmd);
             total = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
         }
@@ -263,7 +307,8 @@ public class Payments
             // interpolación es segura (nunca viene directo del usuario).
             cmd.CommandText = $@"
                 SELECT {SelectColumns}
-                FROM dbo.Payments
+                FROM dbo.Payments p
+                LEFT JOIN dbo.Residents r ON r.ResidentId = p.ReviewedByUserId
                 {whereSql}
                 ORDER BY {sortField} {sortDir}
                 OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY";
@@ -292,7 +337,11 @@ public class Payments
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"SELECT {SelectColumns} FROM dbo.Payments WHERE PaymentId = @id";
+        cmd.CommandText = $@"
+            SELECT {SelectColumns}
+            FROM dbo.Payments p
+            LEFT JOIN dbo.Residents r ON r.ResidentId = p.ReviewedByUserId
+            WHERE p.PaymentId = @id";
         cmd.Parameters.AddWithValue("@id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -439,9 +488,23 @@ public class Payments
         cmd.Parameters.AddWithValue("@amount", effectiveAmount.Value);
         cmd.Parameters.AddWithValue("@period", period);
 
-        await using var reader = await cmd.ExecuteReaderAsync();
-        await reader.ReadAsync();
-        var created = Read(reader);
+        PaymentDto created;
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            await reader.ReadAsync();
+            created = Read(reader);
+        }
+
+        // El OUTPUT INSERTED de arriba no puede hacer JOIN, así que
+        // ReviewedByName todavía viene null acá (ver Read/HasColumn) --
+        // solo hace falta resolverlo cuando un administrador crea el pago
+        // ya revisado (approved/rejected directo); un residente puro
+        // siempre crea en "pending", sin revisor.
+        if (created.ReviewedByUserId is not null)
+        {
+            var reviewerName = await GetResidentNameAsync(connection, created.ReviewedByUserId);
+            created = created with { ReviewedByName = reviewerName };
+        }
 
         return new CreatedResult($"/api/payments/{created.Id}", created);
     }
@@ -518,7 +581,11 @@ public class Payments
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"SELECT {SelectColumns} FROM dbo.Payments WHERE PaymentId = @id";
+        cmd.CommandText = $@"
+            SELECT {SelectColumns}
+            FROM dbo.Payments p
+            LEFT JOIN dbo.Residents r ON r.ResidentId = p.ReviewedByUserId
+            WHERE p.PaymentId = @id";
         cmd.Parameters.AddWithValue("@id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -655,6 +722,19 @@ public class Payments
                 return new NotFoundResult();
             }
             updated = Read(reader);
+        }
+
+        // Mismo motivo que en CreatePayment: el OUTPUT INSERTED de la
+        // UPDATE no puede hacer JOIN, así que ReviewedByName viene null
+        // acá todavía. ReviewedByUserId puede ser el de esta misma
+        // llamada (isNewReview) o uno de una revisión anterior que este
+        // Update no tocó -- de cualquier forma, resolver el nombre
+        // siempre a partir del ReviewedByUserId final es correcto en los
+        // dos casos.
+        if (updated.ReviewedByUserId is not null)
+        {
+            var reviewerName = await GetResidentNameAsync(connection, updated.ReviewedByUserId);
+            updated = updated with { ReviewedByName = reviewerName };
         }
 
         // Aviso por correo de que un pago quedó aprobado/rechazado --

@@ -31,6 +31,20 @@ const neutral = {
   900: '#2d2b2b',
 }
 
+// Verde para el estado "approved" de Payments (PaymentStatusField.tsx) --
+// única excepción al acento único de rojo que describe el comentario de
+// arriba, a pedido explícito del usuario: un pago aprobado necesita
+// leerse como "positivo" de un vistazo, cosa que la tinta neutra que
+// tenía antes (success.main = neutral) no lograba. Un solo tono por
+// modo (no hace falta una rampa completa como red/neutral, porque acá
+// se usa un único uso: el chip de estado aprobado), elegido para
+// convivir con el resto de la paleta cálida en vez de un verde
+// genérico de UI kit.
+const green = {
+  light: '#2f6f4a',
+  dark: '#6fcf9a',
+}
+
 const fontFamily = '"Sora", system-ui, sans-serif'
 
 // Estándar de botones del proyecto: bajamos la altura de forma bien
@@ -61,11 +75,13 @@ const buttonDefaults = {
   },
 }
 
-// El sistema es deliberadamente de un solo acento: no hay verde de éxito
-// ni ámbar de advertencia inventados aparte del rojo. "Pagado" queda en
-// tinta neutra (es el estado esperado, no necesita color); "pendiente"
-// toma un rojo claro de la misma rampa y "vencido"/crítico usa el 700,
-// que es el que da suficiente contraste como texto.
+// El sistema es deliberadamente de un solo acento (no hay ámbar de
+// advertencia inventado aparte del rojo: "pendiente" toma un rojo claro
+// de la misma rampa, y "vencido"/crítico usa el 700, que es el que da
+// suficiente contraste como texto) -- con una única excepción: `success`
+// sí es un verde real (ver la constante `green` arriba), a pedido
+// explícito del usuario para el estado "approved" de Payments, en vez
+// de la tinta neutra que tenía antes.
 export const lightTheme = deepmerge(defaultTheme, {
   palette: {
     mode: 'light',
@@ -73,7 +89,7 @@ export const lightTheme = deepmerge(defaultTheme, {
     secondary: { main: neutral[700], contrastText: '#FFFFFF' },
     error: { main: red[700] },
     warning: { main: red[500], contrastText: '#FFFFFF' },
-    success: { main: neutral[800], contrastText: '#FFFFFF' },
+    success: { main: green.light, contrastText: '#FFFFFF' },
     background: { default: '#f3f2f2', paper: '#eae9e9' },
     text: { primary: '#201e1d', secondary: neutral[600] },
     divider: 'rgba(32, 30, 29, 0.4)',
@@ -101,7 +117,7 @@ export const darkTheme = deepmerge(defaultDarkTheme, {
     secondary: { main: neutral[400], contrastText: '#201e1d' },
     error: { main: red[400] },
     warning: { main: red[300], contrastText: '#201e1d' },
-    success: { main: neutral[300], contrastText: '#201e1d' },
+    success: { main: green.dark, contrastText: '#201e1d' },
     background: { default: neutral[900], paper: '#231f1f' },
     text: { primary: '#f8f4f4', secondary: neutral[400] },
     divider: 'rgba(248, 244, 244, 0.3)',
