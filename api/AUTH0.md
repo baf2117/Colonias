@@ -15,7 +15,7 @@ El middleware de validación de JWT (`Auth/JwtAuthenticationMiddleware.cs`) ya e
 Auth0 deja generar un token de prueba directamente desde el dashboard: entra al API que creaste → pestaña "Test" → ahí aparece un ejemplo con `client_id` y `client_secret` de una aplicación de prueba que Auth0 crea automáticamente, para pedir un token por client credentials. Copia el `access_token` de la respuesta y probá:
 
 ```
-curl -H "Authorization: Bearer <el_token>" http://localhost:7071/api/Me
+curl -H "Authorization: Bearer <el_token>" http://localhost:7072/api/Me
 ```
 
 Si todo está bien configurado, responde con `"authenticated": true` y la lista de claims del token.

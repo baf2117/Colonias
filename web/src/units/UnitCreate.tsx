@@ -7,11 +7,14 @@ import {
   required,
   SimpleForm,
   TextInput,
+  usePermissions,
   useTranslate,
 } from 'react-admin'
+import type { Permissions } from '../authProvider'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { isSuperAdministrador } from '../components/RequireRole'
 
 // Misma pantalla de referencia que NeighborhoodCreate: título centrado
 // (AppPageTitle) + campos en la grilla de 12 columnas (AppFormRow +
@@ -25,6 +28,8 @@ import { AppPageTitle } from '../components/AppPageTitle'
 // falta llenarlo para darle una cuota propia, distinta a la del resto.
 export function UnitCreate() {
   const translate = useTranslate()
+  const { permissions } = usePermissions<Permissions>()
+  const isSuperAdmin = isSuperAdministrador(permissions ?? null)
   return (
     <Create redirect="list">
       <SimpleForm>
@@ -34,11 +39,17 @@ export function UnitCreate() {
           <AppFormCol span={3}>
             <BooleanInput source="active" defaultValue={true} />
           </AppFormCol>
-          <AppFormCol span={4}>
-            <ReferenceInput source="neighborhoodId" reference="neighborhoods">
-              <AutocompleteInput optionText="name" validate={required()} fullWidth />
-            </ReferenceInput>
-          </AppFormCol>
+          {/* Un Administrador no elige colonia -- api/Units.cs
+              (ResolveNeighborhoodScope) crea la unidad directo en la
+              suya, ignorando lo que mande acá. Mostrarle el selector
+              igual solo lo confundiría. */}
+          {isSuperAdmin ? (
+            <AppFormCol span={4}>
+              <ReferenceInput source="neighborhoodId" reference="neighborhoods">
+                <AutocompleteInput optionText="name" validate={required()} fullWidth />
+              </ReferenceInput>
+            </AppFormCol>
+          ) : null}
         </AppFormRow>
 
         <AppFormRow>

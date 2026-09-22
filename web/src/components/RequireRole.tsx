@@ -33,7 +33,34 @@ export const isPureResident = (permissions: Permissions): boolean =>
   !permissions.administrador &&
   !permissions.superAdministrador
 
-function AccessDenied() {
+// Espejo en el frontend de RequireCanEditResidentAsync en
+// api/Residents.cs (la protección real); esto solo evita mostrar un
+// botón/formulario que el API de todos modos va a rechazar. Reglas, en
+// orden:
+//  1. Cualquiera puede editar su propia ficha.
+//  2. Nadie más puede editar la ficha de un SuperAdministrador -- ni
+//     siquiera otro SuperAdministrador.
+//  3. Un Administrador (sin SuperAdministrador) tampoco puede editar a
+//     OTRO Administrador. Un SuperAdministrador sí puede.
+export function canEditResident(
+  permissions: Permissions,
+  target: { id: number; administrador: boolean; superAdministrador: boolean },
+): boolean {
+  if (permissions?.kind !== 'resident') return false
+  if (permissions.residentId === target.id) return true
+  if (target.superAdministrador) return false
+  return !target.administrador || permissions.superAdministrador
+}
+
+// Solo un SuperAdministrador puede dejar a alguien (incluido él mismo)
+// como SuperAdministrador -- espejo de RequireCanGrantSuperAdministrador
+// en api/Residents.cs. Se usa para ocultar el checkbox
+// "SuperAdministrador" en ResidentCreate/ResidentEdit cuando quien edita
+// no puede otorgarlo.
+export const canGrantSuperAdministrador = (permissions: Permissions): boolean =>
+  permissions?.kind === 'resident' && permissions.superAdministrador
+
+export function AccessDenied() {
   return (
     <Typography sx={{ p: 4 }} color="text.secondary">
       No tenés permiso para ver esta sección.

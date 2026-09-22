@@ -21,7 +21,7 @@ public class CurrentUserProvider
         // consulta antes de la fusión: UnitId vive directo en la fila de
         // Residents.
         command.CommandText = @"
-            SELECT ResidentId, Auth0Sub, Name, Email, UnitId,
+            SELECT ResidentId, Auth0Sub, Name, Email, UnitId, NeighborhoodId,
                    Administrador, SuperAdministrador, Residente
             FROM dbo.Residents
             WHERE Auth0Sub = @sub AND Active = 1";
@@ -40,6 +40,7 @@ public class CurrentUserProvider
             Name = reader.GetString(reader.GetOrdinal("Name")),
             Email = reader.IsDBNull(reader.GetOrdinal("Email")) ? null : reader.GetString(reader.GetOrdinal("Email")),
             UnitId = reader.IsDBNull(reader.GetOrdinal("UnitId")) ? null : reader.GetInt32(reader.GetOrdinal("UnitId")),
+            NeighborhoodId = reader.IsDBNull(reader.GetOrdinal("NeighborhoodId")) ? null : reader.GetInt32(reader.GetOrdinal("NeighborhoodId")),
             Administrador = reader.GetBoolean(reader.GetOrdinal("Administrador")),
             SuperAdministrador = reader.GetBoolean(reader.GetOrdinal("SuperAdministrador")),
             Residente = reader.GetBoolean(reader.GetOrdinal("Residente")),

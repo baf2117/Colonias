@@ -39,6 +39,7 @@ public class Residents
         string? Phone,
         string? Email,
         int? UnitId,
+        int? NeighborhoodId,
         bool Administrador,
         bool SuperAdministrador,
         bool Residente,
@@ -46,7 +47,7 @@ public class Residents
         string? Auth0Sub);
 
     private const string SelectColumns =
-        "ResidentId, Name, Phone, Email, UnitId, Administrador, SuperAdministrador, Residente, Active, Auth0Sub";
+        "ResidentId, Name, Phone, Email, UnitId, NeighborhoodId, Administrador, SuperAdministrador, Residente, Active, Auth0Sub";
 
     private static ResidentDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
         reader.GetInt32(reader.GetOrdinal("ResidentId")),
@@ -54,6 +55,7 @@ public class Residents
         reader.IsDBNull(reader.GetOrdinal("Phone")) ? null : reader.GetString(reader.GetOrdinal("Phone")),
         reader.IsDBNull(reader.GetOrdinal("Email")) ? null : reader.GetString(reader.GetOrdinal("Email")),
         reader.IsDBNull(reader.GetOrdinal("UnitId")) ? null : reader.GetInt32(reader.GetOrdinal("UnitId")),
+        reader.IsDBNull(reader.GetOrdinal("NeighborhoodId")) ? null : reader.GetInt32(reader.GetOrdinal("NeighborhoodId")),
         reader.GetBoolean(reader.GetOrdinal("Administrador")),
         reader.GetBoolean(reader.GetOrdinal("SuperAdministrador")),
         reader.GetBoolean(reader.GetOrdinal("Residente")),
@@ -85,6 +87,120 @@ public class Residents
         }
         return null;
     }
+
+    private static IActionResult Forbidden(string message) =>
+        new ObjectResult(new { error = message, message }) { StatusCode = StatusCodes.Status403Forbidden };
+
+    // Mensaje deliberadamente genérico (nunca dice "es superadministrador"
+    // ni "es administrador") -- el motivo real de un 403 acá no debe
+    // filtrarle a un Administrador el rol exacto de alguien que, si es
+    // SuperAdministrador, ni siquiera debería poder ver en el directorio
+    // (ver MaskSuperAdministrador más abajo).
+    private const string CannotEditMessage = "No tenés permiso para editar este residente.";
+
+    // Reglas de edición de dbo.Residents, en orden:
+    //  1. Cualquiera puede editar su propia ficha (currentUser.ResidentId).
+    //  2. Nadie -- ni siquiera otro SuperAdministrador -- puede editar la
+    //     ficha de un SuperAdministrador que no sea uno mismo. El único
+    //     que puede tocar los datos de un SuperAdministrador es él mismo.
+    //  3. Un Administrador (sin SuperAdministrador) tampoco puede editar
+    //     a OTRO Administrador. Un SuperAdministrador sí puede.
+    // Devuelve null si no existe la fila -- que el UPDATE de más abajo
+    // devuelva el 404 de siempre.
+    private static async Task<IActionResult?> RequireCanEditResidentAsync(
+        HttpRequest req, Microsoft.Data.SqlClient.SqlConnection connection, int targetId)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null)
+        {
+            return Forbidden(CannotEditMessage);
+        }
+        if (currentUser.ResidentId == targetId)
+        {
+            return null;
+        }
+
+        bool targetAdministrador, targetSuperAdministrador;
+        await using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT Administrador, SuperAdministrador FROM dbo.Residents WHERE ResidentId = @id";
+            cmd.Parameters.AddWithValue("@id", targetId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                return null;
+            }
+            targetAdministrador = reader.GetBoolean(reader.GetOrdinal("Administrador"));
+            targetSuperAdministrador = reader.GetBoolean(reader.GetOrdinal("SuperAdministrador"));
+        }
+
+        if (targetSuperAdministrador)
+        {
+            return Forbidden(CannotEditMessage);
+        }
+        if (targetAdministrador && !currentUser.SuperAdministrador)
+        {
+            return Forbidden(CannotEditMessage);
+        }
+
+        return null;
+    }
+
+    // Solo un SuperAdministrador puede dejar a alguien (a sí mismo
+    // incluido) como SuperAdministrador -- un Administrador nunca puede
+    // otorgar ese rol, ni siquiera de forma indirecta editando su propia
+    // ficha. `requestedSuperAdministrador` es el valor que vino en el
+    // body (null = el campo no vino, no hay nada que validar).
+    private static IActionResult? RequireCanGrantSuperAdministrador(HttpRequest req, bool? requestedSuperAdministrador)
+    {
+        if (requestedSuperAdministrador is not true)
+        {
+            return null;
+        }
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !currentUser.SuperAdministrador)
+        {
+            return Forbidden("Solo un superadministrador puede asignar el rol de superadministrador.");
+        }
+        return null;
+    }
+
+    // Solo un SuperAdministrador puede asignarle una colonia a alguien
+    // (dbo.Residents.NeighborhoodId, la colonia que un Administrador
+    // administra -- ver schema.sql) -- un Administrador no puede
+    // autoasignarse una ni reasignar la de otro. Mismo criterio y misma
+    // forma que RequireCanGrantSuperAdministrador: solo valida cuando el
+    // body realmente trae un valor (null = no vino, no hay nada que
+    // asignar todavía, así que no hay nada que validar). El Update usa
+    // COALESCE para este campo (como Administrador/SuperAdministrador,
+    // no como Phone/UnitId) justamente para que esto sea seguro: un
+    // Administrador editando cualquier otro campo de SU PROPIA ficha
+    // nunca manda este campo, así que nunca lo borra sin querer.
+    private static IActionResult? RequireCanAssignNeighborhood(HttpRequest req, int? requestedNeighborhoodId)
+    {
+        if (requestedNeighborhoodId is null)
+        {
+            return null;
+        }
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !currentUser.SuperAdministrador)
+        {
+            return Forbidden("Solo un superadministrador puede asignarle una colonia a un administrador.");
+        }
+        return null;
+    }
+
+    // Un Administrador (sin SuperAdministrador) no debe enterarse de que
+    // otra persona es SuperAdministrador -- a pedido explícito del
+    // usuario, ni siquiera de que esa fila existe. No alcanza con
+    // devolver el campo en false (eso ya se probó y el registro seguía
+    // apareciendo en el directorio): la fila entera de un
+    // SuperAdministrador se excluye de GetResidents, y GetResident
+    // devuelve 404 para su id, como si no existiera. No hace falta
+    // ocultar a un Administrador que no sea SuperAdministrador: solo
+    // SuperAdministrador es sensible acá.
+    private static bool IsAdminOnly(CurrentUser? currentUser) =>
+        currentUser is { SuperAdministrador: false, Administrador: true };
 
     [Function("GetResidents")]
     public async Task<IActionResult> GetList(
@@ -157,6 +273,14 @@ public class Residents
             }
         }
 
+        // Un Administrador (sin SuperAdministrador) ni siquiera ve la fila
+        // de un SuperAdministrador en este listado -- ver IsAdminOnly.
+        // Entra al WHERE (no es un filtro que se pueda sacar por query
+        // string) para que Content-Range/total también den bien: contar
+        // filas que después no se devuelven rompería la paginación.
+        var currentUser = req.HttpContext.GetCurrentUser();
+        var hideSuperAdministrador = IsAdminOnly(currentUser);
+
         var whereClauses = new List<string>();
         if (!string.IsNullOrWhiteSpace(nameFilter))
         {
@@ -165,6 +289,10 @@ public class Residents
         if (unitIdFilter is not null)
         {
             whereClauses.Add("UnitId = @unitId");
+        }
+        if (hideSuperAdministrador)
+        {
+            whereClauses.Add("SuperAdministrador = 0");
         }
         var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
@@ -244,7 +372,15 @@ public class Residents
             return new NotFoundResult();
         }
 
-        return new OkObjectResult(Read(reader));
+        var resident = Read(reader);
+        if (resident.SuperAdministrador && IsAdminOnly(req.HttpContext.GetCurrentUser()))
+        {
+            // Ver IsAdminOnly: para un Administrador, un SuperAdministrador
+            // no existe -- mismo 404 que si el id no estuviera en la base.
+            return new NotFoundResult();
+        }
+
+        return new OkObjectResult(resident);
     }
 
     public record CreateResidentBody(
@@ -252,6 +388,7 @@ public class Residents
         string? Phone,
         string? Email,
         int? UnitId,
+        int? NeighborhoodId,
         bool? Administrador,
         bool? SuperAdministrador,
         bool? Residente,
@@ -275,22 +412,35 @@ public class Residents
             return new BadRequestObjectResult(new { error = "Name is required." });
         }
 
+        var grantForbidden = RequireCanGrantSuperAdministrador(req, body.SuperAdministrador);
+        if (grantForbidden is not null)
+        {
+            return grantForbidden;
+        }
+
+        var assignForbidden = RequireCanAssignNeighborhood(req, body.NeighborhoodId);
+        if (assignForbidden is not null)
+        {
+            return assignForbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO dbo.Residents
-                (Name, Phone, Email, UnitId, Administrador, SuperAdministrador, Residente, Active)
+                (Name, Phone, Email, UnitId, NeighborhoodId, Administrador, SuperAdministrador, Residente, Active)
             OUTPUT
-                INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
+                INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId, INSERTED.NeighborhoodId,
                 INSERTED.Administrador, INSERTED.SuperAdministrador,
                 INSERTED.Residente, INSERTED.Active, INSERTED.Auth0Sub
             VALUES
-                (@name, @phone, @email, @unitId, @administrador, @superAdministrador, @residente, @active)";
+                (@name, @phone, @email, @unitId, @neighborhoodId, @administrador, @superAdministrador, @residente, @active)";
         cmd.Parameters.AddWithValue("@name", body.Name);
         cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@email", (object?)body.Email ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@unitId", (object?)body.UnitId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@neighborhoodId", (object?)body.NeighborhoodId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@administrador", body.Administrador ?? false);
         cmd.Parameters.AddWithValue("@superAdministrador", body.SuperAdministrador ?? false);
         cmd.Parameters.AddWithValue("@residente", body.Residente ?? false);
@@ -308,6 +458,7 @@ public class Residents
         string? Phone,
         string? Email,
         int? UnitId,
+        int? NeighborhoodId,
         bool? Administrador,
         bool? SuperAdministrador,
         bool? Residente,
@@ -326,27 +477,54 @@ public class Residents
         var body = await JsonSerializer.DeserializeAsync<UpdateResidentBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
+        var grantForbidden = RequireCanGrantSuperAdministrador(req, body?.SuperAdministrador);
+        if (grantForbidden is not null)
+        {
+            return grantForbidden;
+        }
+
+        var assignForbidden = RequireCanAssignNeighborhood(req, body?.NeighborhoodId);
+        if (assignForbidden is not null)
+        {
+            return assignForbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        var editForbidden = await RequireCanEditResidentAsync(req, connection, id);
+        if (editForbidden is not null)
+        {
+            return editForbidden;
+        }
+
         await using var cmd = connection.CreateCommand();
         // Phone/Email/UnitId usan asignación directa, no COALESCE: son
         // opcionales, así que dejarlos en blanco en la edición debe poder
         // borrar el valor guardado (igual que Address en UpdateUnit) —
         // para UnitId en particular, eso es lo que permite pasar a
         // alguien de "vive en una unidad" a "cuenta sin unidad" (o
-        // viceversa).
+        // viceversa). NeighborhoodId es la excepción: va con COALESCE,
+        // no asignación directa -- a propósito, porque el formulario ni
+        // siquiera renderiza este campo para quien no puede tocarlo (ver
+        // ResidentEdit.tsx), así que ese PUT nunca lo manda. Con
+        // asignación directa, ese "no lo manda" se leería como "bórralo",
+        // y cualquier Administrador que edite su propia ficha (nombre,
+        // teléfono, lo que sea) le borraría la colonia asignada sin
+        // querer en cada guardado.
         cmd.CommandText = @"
             UPDATE dbo.Residents
             SET Name = COALESCE(@name, Name),
                 Phone = @phone,
                 Email = @email,
                 UnitId = @unitId,
+                NeighborhoodId = COALESCE(@neighborhoodId, NeighborhoodId),
                 Administrador = COALESCE(@administrador, Administrador),
                 SuperAdministrador = COALESCE(@superAdministrador, SuperAdministrador),
                 Residente = COALESCE(@residente, Residente),
                 Active = COALESCE(@active, Active)
             OUTPUT
-                INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
+                INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId, INSERTED.NeighborhoodId,
                 INSERTED.Administrador, INSERTED.SuperAdministrador,
                 INSERTED.Residente, INSERTED.Active, INSERTED.Auth0Sub
             WHERE ResidentId = @id";
@@ -354,6 +532,7 @@ public class Residents
         cmd.Parameters.AddWithValue("@phone", (object?)body?.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@email", (object?)body?.Email ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@unitId", (object?)body?.UnitId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@neighborhoodId", (object?)body?.NeighborhoodId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@administrador", (object?)body?.Administrador ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@superAdministrador", (object?)body?.SuperAdministrador ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@residente", (object?)body?.Residente ?? DBNull.Value);
@@ -463,7 +642,7 @@ public class Residents
         cmd.CommandText = @"
             INSERT INTO dbo.Residents (Name, Phone, Email, UnitId, Auth0Sub, Residente, Active)
             OUTPUT
-                INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId,
+                INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId, INSERTED.NeighborhoodId,
                 INSERTED.Administrador, INSERTED.SuperAdministrador, INSERTED.Residente,
                 INSERTED.Active, INSERTED.Auth0Sub
             VALUES (@name, @phone, @email, @unitId, @sub, 1, 1)";

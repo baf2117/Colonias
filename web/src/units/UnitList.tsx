@@ -1,7 +1,20 @@
 import { Box } from '@mui/material'
-import { BooleanField, CreateButton, List, ReferenceField, TextField, TopToolbar, useTranslate } from 'react-admin'
+import {
+  AutocompleteInput,
+  BooleanField,
+  CreateButton,
+  List,
+  ReferenceField,
+  ReferenceInput,
+  TextField,
+  TopToolbar,
+  usePermissions,
+  useTranslate,
+} from 'react-admin'
+import type { Permissions } from '../authProvider'
 import { AppDatagrid } from '../components/AppDatagrid'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { isSuperAdministrador } from '../components/RequireRole'
 
 // Mismo patrón que NeighborhoodList: título arriba centrado en su propia
 // línea, botón "Crear" debajo alineado a la derecha (no comparten fila),
@@ -18,9 +31,22 @@ const UnitListActions = () => {
   )
 }
 
+// Filtro por colonia, solo para SuperAdministrador -- un Administrador
+// ni lo necesita ni lo ve: api/Units.cs (ResolveNeighborhoodScope) ya lo
+// acota del lado del servidor a la colonia que tiene asignada
+// (dbo.Residents.NeighborhoodId), así que mostrarle este filtro no
+// tendría sentido (siempre iba a dar la misma única colonia).
+const unitFilters = [
+  <ReferenceInput key="neighborhoodId" source="neighborhoodId" reference="neighborhoods" alwaysOn>
+    <AutocompleteInput optionText="name" label="Colonia" />
+  </ReferenceInput>,
+]
+
 export function UnitList() {
+  const { permissions } = usePermissions<Permissions>()
+  const filters = isSuperAdministrador(permissions ?? null) ? unitFilters : undefined
   return (
-    <List actions={<UnitListActions />}>
+    <List actions={<UnitListActions />} filters={filters}>
       <AppDatagrid rowClick="show" bulkActionButtons={false}>
         <TextField source="identifier" />
         <TextField source="address" />

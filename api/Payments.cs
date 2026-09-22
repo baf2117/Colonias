@@ -775,6 +775,8 @@ public class Payments
     {
         if (payment.ResidentId is null)
         {
+            _logger.LogInformation(
+                "Correo de revisión del pago {PaymentId} omitido: el pago no tiene ResidentId asociado.", payment.Id);
             return;
         }
 
@@ -795,20 +797,35 @@ public class Payments
                 }
             }
 
-            if (residentEmail is null)
+            if (string.IsNullOrWhiteSpace(residentEmail))
             {
+                _logger.LogInformation(
+                    "Correo de revisión del pago {PaymentId} omitido: el residente {ResidentId} no tiene Email cargado.",
+                    payment.Id, payment.ResidentId);
                 return;
             }
 
+            _logger.LogInformation(
+                "Enviando correo de revisión del pago {PaymentId} a {Email}...", payment.Id, residentEmail);
+
             string? currency = null;
+            string? unitIdentifier = null;
+            string? neighborhoodName = null;
             await using (var cmd = connection.CreateCommand())
             {
                 cmd.CommandText = @"
-                    SELECT N.Currency FROM dbo.Units U
+                    SELECT N.Currency, U.Identifier, N.Name AS NeighborhoodName
+                    FROM dbo.Units U
                     JOIN dbo.Neighborhoods N ON N.NeighborhoodId = U.NeighborhoodId
                     WHERE U.UnitId = @unitId";
                 cmd.Parameters.AddWithValue("@unitId", payment.UnitId);
-                currency = (await cmd.ExecuteScalarAsync()) as string;
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    currency = reader.IsDBNull(reader.GetOrdinal("Currency")) ? null : reader.GetString(reader.GetOrdinal("Currency"));
+                    unitIdentifier = reader.GetString(reader.GetOrdinal("Identifier"));
+                    neighborhoodName = reader.GetString(reader.GetOrdinal("NeighborhoodName"));
+                }
             }
 
             var period = FormatPeriod(payment.Period);
@@ -819,10 +836,10 @@ public class Payments
                 ? $"Tu pago de {period} fue aprobado"
                 : $"Tu pago de {period} fue rechazado";
             var htmlContent = isApproved
-                ? $"<p>Hola {residentName},</p><p>Tu pago correspondiente a <strong>{period}</strong> por <strong>{amountText}</strong> fue <strong>aprobado</strong>.</p>"
-                : $"<p>Hola {residentName},</p><p>Tu pago correspondiente a <strong>{period}</strong> fue <strong>rechazado</strong>.</p>"
-                    + (string.IsNullOrWhiteSpace(payment.RejectionReason) ? "" : $"<p>Motivo: {payment.RejectionReason}</p>")
-                    + "<p>Podés cargar un nuevo comprobante para el mismo mes desde el sistema.</p>";
+                ? PaymentEmailTemplates.PaymentApproved(
+                    residentName!, unitIdentifier ?? "tu unidad", neighborhoodName ?? "la colonia", period, amountText)
+                : PaymentEmailTemplates.PaymentRejected(
+                    residentName!, unitIdentifier ?? "tu unidad", neighborhoodName ?? "la colonia", period, payment.RejectionReason);
 
             var sendResult = await EmailService.SendAsync(residentEmail, residentName, subject, htmlContent);
             if (!sendResult.Success)

@@ -15,6 +15,11 @@ Base de datos: `free-sql-db-6000256`
 
 Como ya no queda un archivo por cambio, el porqué de cada decisión de esquema (por ejemplo, por qué se eliminó `Fees`) vive en el historial de git de `schema.sql` y en el documento de arquitectura del proyecto, no en un archivo de migración aparte.
 
+### Scripts puntuales pendientes de correr contra la base real
+
+- `2026-09-21_payment_reminders.sql` — crea `dbo.PaymentReminders` (control de recordatorios de pago ya enviados, usada por el Timer Trigger `PaymentReminders.cs`). Sin esta tabla, ese Timer Trigger falla al intentar leerla/escribirla.
+- `2026-09-21_residents_neighborhood_id.sql` — agrega `dbo.Residents.NeighborhoodId` (la colonia que administra un Administrador, independiente de `UnitId`). Sin esta columna, `Residents.cs`/`Units.cs` fallan al leerla/escribirla.
+
 ## Conexión desde el API (Azure Functions)
 
 Por simplicidad, de entrada el API se conecta con usuario y contraseña (autenticación SQL) — el mismo usuario administrador que definiste al crear la base de datos. Más adelante, cuando el sistema ya esté funcionando, conviene migrar a una identidad administrada (sin contraseñas guardadas en ningún lado); por ahora esto es más simple de entender y de poner a andar.

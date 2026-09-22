@@ -84,6 +84,26 @@ public class Units
         return null;
     }
 
+    // Determina si Unidades debe acotarse a una sola colonia para quien
+    // llama, y a cuál. Un SuperAdministrador nunca se acota -- puede ver
+    // todas y filtrar por colonia si quiere (filter.neighborhoodId en
+    // GetList). Un Administrador SIEMPRE se acota a su propia colonia
+    // (currentUser.NeighborhoodId, dbo.Residents.NeighborhoodId, ver
+    // RequireCanAssignNeighborhood en Residents.cs) -- NeighborhoodId
+    // null significa que todavía nadie se la asignó, y en ese caso no ve
+    // NINGUNA unidad (nunca "todas"), ver GetList más abajo.
+    private readonly record struct NeighborhoodScope(bool IsScoped, int? NeighborhoodId);
+
+    private static NeighborhoodScope ResolveNeighborhoodScope(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || currentUser.SuperAdministrador)
+        {
+            return new NeighborhoodScope(false, null);
+        }
+        return new NeighborhoodScope(true, currentUser.NeighborhoodId);
+    }
+
     // Autoservicio: cualquier residente puede ver los datos básicos de SU
     // PROPIA unidad (resuelta del lado del servidor a partir de su propio
     // Auth0Sub vía GetCurrentUser().UnitId, nunca de un id que mande el
@@ -171,13 +191,58 @@ public class Units
             }
         }
 
+        // filter.neighborhoodId: el filtro por colonia que pidió el
+        // usuario para la vista de SuperAdministrador. Un Administrador
+        // no lo necesita (ni el frontend se lo muestra, ver UnitList.tsx)
+        // porque más abajo se lo fuerza de todos modos a su propia
+        // colonia -- si de algún modo llegara este filtro en su request,
+        // se ignora en vez de dejarlo ver otra colonia.
+        int? filterNeighborhoodId = null;
+        if (req.Query.TryGetValue("filter", out var filterRaw))
+        {
+            try
+            {
+                using var filterDoc = JsonDocument.Parse(filterRaw.ToString());
+                if (filterDoc.RootElement.TryGetProperty("neighborhoodId", out var nEl) && nEl.TryGetInt32(out var nId))
+                {
+                    filterNeighborhoodId = nId;
+                }
+            }
+            catch (JsonException)
+            {
+                // filter mal formado: se ignora en vez de romper la lista.
+            }
+        }
+
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped && scope.NeighborhoodId is null)
+        {
+            // Administrador sin colonia asignada todavía: no ve ninguna
+            // unidad (no "todas"). Se corta acá, sin pegarle a la base.
+            req.HttpContext.Response.Headers["Content-Range"] = "units 0-0/0";
+            req.HttpContext.Response.Headers["Access-Control-Expose-Headers"] = "Content-Range";
+            return new OkObjectResult(Array.Empty<UnitDto>());
+        }
+
+        // Un Administrador siempre queda acotado a su propia colonia
+        // (ignora cualquier filter.neighborhoodId que mande el cliente);
+        // un SuperAdministrador solo se acota si él mismo pidió el
+        // filtro.
+        var effectiveNeighborhoodId = scope.IsScoped ? scope.NeighborhoodId : filterNeighborhoodId;
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        var whereSql = effectiveNeighborhoodId is not null ? "WHERE NeighborhoodId = @neighborhoodId" : "";
 
         int total;
         await using (var countCmd = connection.CreateCommand())
         {
-            countCmd.CommandText = "SELECT COUNT(*) FROM dbo.Units";
+            countCmd.CommandText = $"SELECT COUNT(*) FROM dbo.Units {whereSql}";
+            if (effectiveNeighborhoodId is not null)
+            {
+                countCmd.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId.Value);
+            }
             total = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
         }
 
@@ -189,8 +254,13 @@ public class Units
             cmd.CommandText = $@"
                 SELECT {SelectColumns}
                 FROM dbo.Units
+                {whereSql}
                 ORDER BY {sortField} {sortDir}
                 OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY";
+            if (effectiveNeighborhoodId is not null)
+            {
+                cmd.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId.Value);
+            }
             cmd.Parameters.AddWithValue("@offset", start);
             cmd.Parameters.AddWithValue("@limit", Math.Max(end - start + 1, 1));
 
@@ -230,7 +300,16 @@ public class Units
             return new NotFoundResult();
         }
 
-        return new OkObjectResult(Read(reader));
+        var unit = Read(reader);
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped && unit.NeighborhoodId != scope.NeighborhoodId)
+        {
+            // Fuera de la colonia de este Administrador (o sin colonia
+            // asignada todavía) -- mismo 404 que si el id no existiera.
+            return new NotFoundResult();
+        }
+
+        return new OkObjectResult(unit);
     }
 
     public record CreateUnitBody(string Identifier, bool? Active, int NeighborhoodId, string? Address, decimal? FeeAmount);
@@ -258,6 +337,30 @@ public class Units
             return new BadRequestObjectResult(new { error = "NeighborhoodId is required." });
         }
 
+        // Un Administrador crea la unidad directo en SU colonia -- se
+        // ignora lo que haya mandado el body para NeighborhoodId (mismo
+        // criterio que un residente puro en Payments.cs: el servidor lo
+        // fuerza, no confía en que el frontend ya lo haya ocultado). Sin
+        // colonia asignada todavía, no puede crear ninguna unidad.
+        var scope = ResolveNeighborhoodScope(req);
+        int effectiveNeighborhoodId;
+        if (scope.IsScoped)
+        {
+            if (scope.NeighborhoodId is null)
+            {
+                return new BadRequestObjectResult(new
+                {
+                    error = "No tenés una colonia asignada. Pedile a un superadministrador que te asigne una.",
+                    message = "No tenés una colonia asignada. Pedile a un superadministrador que te asigne una.",
+                });
+            }
+            effectiveNeighborhoodId = scope.NeighborhoodId.Value;
+        }
+        else
+        {
+            effectiveNeighborhoodId = body.NeighborhoodId;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
 
@@ -275,7 +378,7 @@ public class Units
                 VALUES (@identifier, @active, @neighborhoodId, @address, @feeAmount, @registrationCode)";
             cmd.Parameters.AddWithValue("@identifier", body.Identifier);
             cmd.Parameters.AddWithValue("@active", body.Active ?? true);
-            cmd.Parameters.AddWithValue("@neighborhoodId", body.NeighborhoodId);
+            cmd.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId);
             cmd.Parameters.AddWithValue("@address", (object?)body.Address ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@feeAmount", (object?)body.FeeAmount ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@registrationCode", registrationCode);
@@ -311,13 +414,29 @@ public class Units
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            var currentNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, id);
+            if (currentNeighborhoodId is null || currentNeighborhoodId != scope.NeighborhoodId)
+            {
+                // Fuera de la colonia de este Administrador (o sin colonia
+                // asignada todavía) -- mismo 404 que si no existiera.
+                return new NotFoundResult();
+            }
+        }
+
         await using var cmd = connection.CreateCommand();
         // Address y FeeAmount usan asignación directa, no COALESCE como el
         // resto: son campos opcionales (a diferencia de Identifier/Active/
         // NeighborhoodId, que el formulario siempre manda), así que dejarlos
         // en blanco en la edición debe poder borrar el valor guardado — para
         // FeeAmount en particular, eso es lo que hace que la unidad vuelva a
-        // usar la cuota general de la colonia.
+        // usar la cuota general de la colonia. NeighborhoodId, en cambio, se
+        // ignora del body por completo cuando quien edita está acotado a una
+        // colonia (scope.IsScoped) -- un Administrador no puede mudar una
+        // unidad a otra colonia, solo un SuperAdministrador.
         cmd.CommandText = @"
             UPDATE dbo.Units
             SET Identifier = COALESCE(@identifier, Identifier),
@@ -329,7 +448,7 @@ public class Units
             WHERE UnitId = @id";
         cmd.Parameters.AddWithValue("@identifier", (object?)body?.Identifier ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", (object?)body?.Active ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@neighborhoodId", (object?)body?.NeighborhoodId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@neighborhoodId", scope.IsScoped ? DBNull.Value : (object?)body?.NeighborhoodId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@address", (object?)body?.Address ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@feeAmount", (object?)body?.FeeAmount ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
@@ -341,6 +460,18 @@ public class Units
         }
 
         return new OkObjectResult(Read(reader));
+    }
+
+    // Compartido por Update/Delete para chequear el alcance por colonia
+    // de un Administrador antes de tocar la fila. Devuelve null si la
+    // unidad no existe.
+    private static async Task<int?> FindUnitNeighborhoodIdAsync(Microsoft.Data.SqlClient.SqlConnection connection, int unitId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT NeighborhoodId FROM dbo.Units WHERE UnitId = @id";
+        cmd.Parameters.AddWithValue("@id", unitId);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is null ? null : (int)result;
     }
 
     [Function("DeleteUnit")]
@@ -355,6 +486,17 @@ public class Units
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            var currentNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, id);
+            if (currentNeighborhoodId is null || currentNeighborhoodId != scope.NeighborhoodId)
+            {
+                return new NotFoundResult();
+            }
+        }
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = "DELETE FROM dbo.Units OUTPUT DELETED.UnitId WHERE UnitId = @id";
         cmd.Parameters.AddWithValue("@id", id);

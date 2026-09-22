@@ -19,6 +19,12 @@ public class CurrentUser
     public required string Name { get; init; }
     public string? Email { get; init; }
     public int? UnitId { get; init; }
+    // Colonia que este usuario administra (dbo.Residents.NeighborhoodId,
+    // migración 2026-09-21) -- independiente de UnitId, solo se usa para
+    // un Administrador (ver ResolveAdministradorNeighborhoodScope en
+    // Units.cs). Null: administrador sin colonia asignada todavía, o
+    // simplemente no es administrador.
+    public int? NeighborhoodId { get; init; }
     public required bool Administrador { get; init; }
     public required bool SuperAdministrador { get; init; }
     public required bool Residente { get; init; }

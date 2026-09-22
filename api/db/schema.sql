@@ -96,6 +96,7 @@ CREATE UNIQUE INDEX UX_Units_RegistrationCode ON dbo.Units(RegistrationCode);
 CREATE TABLE dbo.Residents (
     ResidentId          INT IDENTITY(1,1) PRIMARY KEY,
     UnitId              INT             NULL REFERENCES dbo.Units(UnitId),   -- NULL: administrador/guardia sin unidad propia
+    NeighborhoodId      INT             NULL REFERENCES dbo.Neighborhoods(NeighborhoodId),   -- colonia que administra (ver nota abajo)
     Auth0Sub            NVARCHAR(255)   NULL,   -- NULL: todavía no tiene cuenta para iniciar sesión
     Name                NVARCHAR(150)   NOT NULL,
     Phone               NVARCHAR(30)    NULL,
@@ -107,6 +108,17 @@ CREATE TABLE dbo.Residents (
     Active              BIT             NOT NULL DEFAULT 1,
     CreatedAt           DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+-- NeighborhoodId (agregada 2026-09-21) es la colonia que un Administrador
+-- administra -- independiente de UnitId, a propósito: un "administrador
+-- puro" (UnitId null) también necesita una colonia para poder ver/tocar
+-- Unidades, y atarlo a la colonia de una unidad donde vive habría hecho
+-- depender ese alcance de si además es residente. Solo un
+-- SuperAdministrador puede asignarla (ver RequireCanAssignNeighborhood en
+-- api/Residents.cs) -- un Administrador nunca se autoasigna una colonia
+-- ni cambia la de otro. Units.cs usa este valor (no el de UnitId) para
+-- acotar qué unidades ve/toca un Administrador; un SuperAdministrador no
+-- tiene esta restricción y filtra por colonia solo si quiere.
 
 -- Auth0Sub es único cuando existe; varias filas pueden no tener
 -- cuenta todavía (índice único filtrado en vez de UNIQUE a secas,
@@ -159,6 +171,20 @@ CREATE TABLE dbo.Payments (
 );
 
 CREATE INDEX IX_Payments_UnitId_Period ON dbo.Payments(UnitId, Period);
+
+-- Control del Timer Trigger de recordatorios de pago (PaymentReminders.cs):
+-- una fila por unidad+período ya avisado, para no mandar el mismo
+-- recordatorio todos los días mientras la unidad siga morosa. Se borra
+-- solo por antigüedad de datos, nunca por la función (no hace falta:
+-- un período nuevo es una fila nueva).
+CREATE TABLE dbo.PaymentReminders (
+    PaymentReminderId  INT IDENTITY(1,1) PRIMARY KEY,
+    UnitId              INT             NOT NULL REFERENCES dbo.Units(UnitId),
+    Period              DATE            NOT NULL,   -- mismo criterio que Payments.Period: normalizado al día 1
+    SentAt              DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+CREATE UNIQUE INDEX UX_PaymentReminders_UnitId_Period ON dbo.PaymentReminders(UnitId, Period);
 
 CREATE TABLE dbo.Vendors (
     VendorId        INT IDENTITY(1,1) PRIMARY KEY,

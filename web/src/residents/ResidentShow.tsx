@@ -7,22 +7,36 @@ import {
   SimpleShowLayout,
   TextField,
   TopToolbar,
+  usePermissions,
   useRecordContext,
 } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { canEditResident } from '../components/RequireRole'
+import type { Permissions } from '../authProvider'
 
 function ResidentShowTitle() {
   const record = useRecordContext()
   return <AppPageTitle>{record?.name ?? ''}</AppPageTitle>
 }
 
-const ResidentShowActions = () => (
-  <TopToolbar>
-    <EditButton />
-  </TopToolbar>
-)
+// Sin EditButton para un Administrador mirando la ficha de otro
+// Administrador/SuperAdministrador -- ver canEditResident.
+type ResidentRecord = { id: number; administrador: boolean; superAdministrador: boolean }
+
+const ResidentShowActions = () => {
+  const record = useRecordContext<ResidentRecord>()
+  const { permissions } = usePermissions<Permissions>()
+  if (!record || !canEditResident(permissions ?? null, record)) {
+    return null
+  }
+  return (
+    <TopToolbar>
+      <EditButton />
+    </TopToolbar>
+  )
+}
 
 // Auth0Sub nunca se muestra tal cual (es un identificador técnico, no
 // algo legible) — solo si la cuenta ya está vinculada o no, que es lo

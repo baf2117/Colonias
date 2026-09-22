@@ -6,11 +6,14 @@ import {
   required,
   SimpleForm,
   TextInput,
+  usePermissions,
   useTranslate,
 } from 'react-admin'
+import type { Permissions } from '../authProvider'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { canGrantSuperAdministrador } from '../components/RequireRole'
 
 // Misma pantalla de referencia que UnitCreate (título + grilla de 12
 // columnas). unitId es opcional — a diferencia de Units.neighborhoodId —
@@ -26,6 +29,8 @@ import { AppPageTitle } from '../components/AppPageTitle'
 // Residente y Administrador a la vez, por ejemplo.
 export function ResidentCreate() {
   const translate = useTranslate()
+  const { permissions } = usePermissions<Permissions>()
+  const canGrantSuperAdmin = canGrantSuperAdministrador(permissions ?? null)
   return (
     <Create redirect="list">
       <SimpleForm>
@@ -61,10 +66,36 @@ export function ResidentCreate() {
           <AppFormCol span={4}>
             <BooleanInput source="administrador" />
           </AppFormCol>
-          <AppFormCol span={4}>
-            <BooleanInput source="superAdministrador" />
-          </AppFormCol>
+          {/* Solo un SuperAdministrador puede otorgar este rol (ver
+              RequireCanGrantSuperAdministrador en api/Residents.cs) --
+              un Administrador ni siquiera ve el checkbox, en vez de
+              verlo y que el guardado lo rechace. */}
+          {canGrantSuperAdmin ? (
+            <AppFormCol span={4}>
+              <BooleanInput source="superAdministrador" />
+            </AppFormCol>
+          ) : null}
         </AppFormRow>
+
+        {/* Colonia que este Administrador administra
+            (dbo.Residents.NeighborhoodId, independiente de unitId) --
+            solo un SuperAdministrador puede asignarla (ver
+            RequireCanAssignNeighborhood en api/Residents.cs), mismo
+            criterio que el checkbox de SuperAdministrador de arriba. */}
+        {canGrantSuperAdmin ? (
+          <AppFormRow>
+            <AppFormCol span={6}>
+              <ReferenceInput source="neighborhoodId" reference="neighborhoods">
+                <AutocompleteInput
+                  optionText="name"
+                  label="Colonia que administra"
+                  fullWidth
+                  helperText="Solo para Administrador/SuperAdministrador. Vacío = sin colonia asignada todavía."
+                />
+              </ReferenceInput>
+            </AppFormCol>
+          </AppFormRow>
+        ) : null}
       </SimpleForm>
     </Create>
   )

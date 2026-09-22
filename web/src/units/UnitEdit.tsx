@@ -7,11 +7,14 @@ import {
   required,
   SimpleForm,
   TextInput,
+  usePermissions,
   useRecordContext,
 } from 'react-admin'
+import type { Permissions } from '../authProvider'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { isSuperAdministrador } from '../components/RequireRole'
 
 // Título con el identificador real de la unidad (no "Unidad" genérico),
 // igual que NeighborhoodShow usa el nombre real de la colonia.
@@ -30,6 +33,8 @@ function UnitEditTitle() {
 // feeAmount opcional: dejarlo vacío hace que la unidad vuelva a usar la
 // cuota general de la colonia (defaultFeeAmount).
 export function UnitEdit() {
+  const { permissions } = usePermissions<Permissions>()
+  const isSuperAdmin = isSuperAdministrador(permissions ?? null)
   return (
     <Edit redirect="list">
       <SimpleForm>
@@ -39,11 +44,17 @@ export function UnitEdit() {
           <AppFormCol span={3}>
             <BooleanInput source="active" />
           </AppFormCol>
-          <AppFormCol span={3}>
-            <ReferenceInput source="neighborhoodId" reference="neighborhoods">
-              <AutocompleteInput optionText="name" validate={required()} fullWidth />
-            </ReferenceInput>
-          </AppFormCol>
+          {/* Un Administrador no puede mudar una unidad a otra colonia --
+              api/Units.cs ignora este campo del body cuando quien edita
+              está acotado a una colonia (scope.IsScoped). Mostrarle el
+              selector igual solo lo confundiría. */}
+          {isSuperAdmin ? (
+            <AppFormCol span={3}>
+              <ReferenceInput source="neighborhoodId" reference="neighborhoods">
+                <AutocompleteInput optionText="name" validate={required()} fullWidth />
+              </ReferenceInput>
+            </AppFormCol>
+          ) : null}
         </AppFormRow>
 
         <AppFormRow>

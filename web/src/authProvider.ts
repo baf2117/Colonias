@@ -7,7 +7,7 @@ import type { Auth0ContextInterface, User } from '@auth0/auth0-react'
 // ser superadministrador ni administrador, así que no hace falta
 // declararle esos campos en false.
 export type Permissions =
-  | { kind: 'resident'; administrador: boolean; superAdministrador: boolean; residente: boolean }
+  | { kind: 'resident'; residentId: number; administrador: boolean; superAdministrador: boolean; residente: boolean }
   | { kind: 'staff' }
   | null
 
@@ -103,6 +103,7 @@ export function buildAuthProvider(auth0: Auth0ContextInterface): AuthProvider {
         if (data.kind === 'resident') {
           return {
             kind: 'resident',
+            residentId: data.resident.residentId,
             administrador: data.resident.administrador,
             superAdministrador: data.resident.superAdministrador,
             residente: data.resident.residente,
