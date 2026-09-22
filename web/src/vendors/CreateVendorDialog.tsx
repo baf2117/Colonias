@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField as MuiTextField } from '@mui/material'
-import { useCreate, useCreateSuggestionContext, useGetList, useNotify, useTranslate } from 'react-admin'
+import { useCreate, useCreateSuggestionContext, useGetList, useNotify, usePermissions, useTranslate } from 'react-admin'
+import type { Permissions } from '../authProvider'
+import { isSuperAdministrador } from '../components/RequireRole'
 
 // Lo que <AutocompleteInput create={...}> renderiza cuando el usuario
 // elige "Agregar <lo que escribió>" en el selector de Proveedor (ver
@@ -17,28 +19,34 @@ import { useCreate, useCreateSuggestionContext, useGetList, useNotify, useTransl
 // la Colonia porque este diálogo no vive dentro de un <Form> (no hay
 // react-hook-form activo acá) — se arma a mano con useGetList y un
 // <TextField select> de MUI. dbo.Vendors.NeighborhoodId es NOT NULL
-// (igual que en Units), así que es obligatorio.
+// (igual que en Units), así que es obligatorio para un
+// SuperAdministrador. Un Administrador NO ve este selector -- queda
+// SIEMPRE acotado a su propia colonia, api/Vendors.cs (CreateVendor)
+// la fuerza del lado del servidor e ignora lo que se mande acá.
 export function CreateVendorDialog() {
   const { filter, onCancel, onCreate } = useCreateSuggestionContext()
   const translate = useTranslate()
   const notify = useNotify()
+  const { permissions } = usePermissions<Permissions>()
+  const isSuperAdmin = isSuperAdministrador(permissions ?? null)
   const [create, { isLoading }] = useCreate()
   const [name, setName] = useState(filter ?? '')
   const [phone, setPhone] = useState('')
   const [neighborhoodId, setNeighborhoodId] = useState<number | ''>('')
 
-  const { data: neighborhoods } = useGetList('neighborhoods', {
-    pagination: { page: 1, perPage: 100 },
-    sort: { field: 'name', order: 'ASC' },
-  })
+  const { data: neighborhoods } = useGetList(
+    'neighborhoods',
+    { pagination: { page: 1, perPage: 100 }, sort: { field: 'name', order: 'ASC' } },
+    { enabled: isSuperAdmin },
+  )
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
-    if (!name.trim() || !neighborhoodId) return
+    if (!name.trim() || (isSuperAdmin && !neighborhoodId)) return
 
     create(
       'vendors',
-      { data: { name, phone: phone.trim() || undefined, neighborhoodId } },
+      { data: { name, phone: phone.trim() || undefined, ...(isSuperAdmin ? { neighborhoodId } : {}) } },
       {
         onSuccess: (created) => {
           setName('')
@@ -75,20 +83,22 @@ export function CreateVendorDialog() {
               onChange={(event) => setPhone(event.target.value)}
               fullWidth
             />
-            <MuiTextField
-              select
-              label={translate('resources.vendors.fields.neighborhoodId')}
-              value={neighborhoodId}
-              onChange={(event) => setNeighborhoodId(Number(event.target.value))}
-              required
-              fullWidth
-            >
-              {(neighborhoods ?? []).map((neighborhood) => (
-                <MenuItem key={neighborhood.id} value={neighborhood.id}>
-                  {neighborhood.name}
-                </MenuItem>
-              ))}
-            </MuiTextField>
+            {isSuperAdmin ? (
+              <MuiTextField
+                select
+                label={translate('resources.vendors.fields.neighborhoodId')}
+                value={neighborhoodId}
+                onChange={(event) => setNeighborhoodId(Number(event.target.value))}
+                required
+                fullWidth
+              >
+                {(neighborhoods ?? []).map((neighborhood) => (
+                  <MenuItem key={neighborhood.id} value={neighborhood.id}>
+                    {neighborhood.name}
+                  </MenuItem>
+                ))}
+              </MuiTextField>
+            ) : null}
           </Stack>
         </DialogContent>
         <DialogActions>

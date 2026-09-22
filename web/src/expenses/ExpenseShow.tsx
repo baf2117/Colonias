@@ -14,6 +14,7 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { ExpenseReceiptField } from './ExpenseReceiptField'
 
 // El monto se formatea con la moneda real de la colonia del gasto,
 // resuelta en dos saltos: Expense -> Vendor (vendorId) -> Neighborhood
@@ -88,9 +89,14 @@ export function ExpenseShow() {
               <ExpenseAmountField />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={8}>
+          <AppFormCol span={4}>
             <Labeled source="description">
               <TextField source="description" />
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={4}>
+            <Labeled label="Comprobante">
+              <ExpenseReceiptField />
             </Labeled>
           </AppFormCol>
         </AppFormRow>

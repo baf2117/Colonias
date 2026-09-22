@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Neighborhood.Auth;
 using Neighborhood.Database;
 
 namespace Neighborhood;
@@ -37,6 +38,24 @@ public class Vendors
         reader.IsDBNull(reader.GetOrdinal("Phone")) ? null : reader.GetString(reader.GetOrdinal("Phone")),
         reader.GetBoolean(reader.GetOrdinal("Active")),
         reader.GetInt32(reader.GetOrdinal("NeighborhoodId")));
+
+    // Mismo criterio y misma forma que ResolveNeighborhoodScope en
+    // Units.cs/Residents.cs (se duplica, cada recurso es autocontenido):
+    // un SuperAdministrador elige la colonia del proveedor a mano (ver
+    // CreateVendorDialog.tsx); un Administrador queda SIEMPRE acotado a
+    // la suya (currentUser.NeighborhoodId) -- sin colonia asignada
+    // todavía, no ve ni puede crear ningún proveedor.
+    private readonly record struct NeighborhoodScope(bool IsScoped, int? NeighborhoodId);
+
+    private static NeighborhoodScope ResolveNeighborhoodScope(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || currentUser.SuperAdministrador)
+        {
+            return new NeighborhoodScope(false, null);
+        }
+        return new NeighborhoodScope(true, currentUser.NeighborhoodId);
+    }
 
     [Function("GetVendors")]
     public async Task<IActionResult> GetList(
@@ -98,12 +117,25 @@ public class Vendors
             }
         }
 
+        // Un Administrador ignora cualquier filter.neighborhoodId que
+        // mande el cliente y queda SIEMPRE acotado a su propia colonia
+        // (ver ResolveNeighborhoodScope); un SuperAdministrador solo se
+        // acota si él mismo pidió el filtro.
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped && scope.NeighborhoodId is null)
+        {
+            req.HttpContext.Response.Headers["Content-Range"] = "vendors 0-0/0";
+            req.HttpContext.Response.Headers["Access-Control-Expose-Headers"] = "Content-Range";
+            return new OkObjectResult(Array.Empty<VendorDto>());
+        }
+        var effectiveNeighborhoodId = scope.IsScoped ? scope.NeighborhoodId : neighborhoodIdFilter;
+
         var whereClauses = new List<string>();
         if (!string.IsNullOrWhiteSpace(nameFilter))
         {
             whereClauses.Add("Name LIKE @nameFilter");
         }
-        if (neighborhoodIdFilter is not null)
+        if (effectiveNeighborhoodId is not null)
         {
             whereClauses.Add("NeighborhoodId = @neighborhoodId");
         }
@@ -120,9 +152,9 @@ public class Vendors
             {
                 countCmd.Parameters.AddWithValue("@nameFilter", $"%{nameFilter}%");
             }
-            if (neighborhoodIdFilter is not null)
+            if (effectiveNeighborhoodId is not null)
             {
-                countCmd.Parameters.AddWithValue("@neighborhoodId", neighborhoodIdFilter.Value);
+                countCmd.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId.Value);
             }
             total = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
         }
@@ -142,9 +174,9 @@ public class Vendors
             {
                 cmd.Parameters.AddWithValue("@nameFilter", $"%{nameFilter}%");
             }
-            if (neighborhoodIdFilter is not null)
+            if (effectiveNeighborhoodId is not null)
             {
-                cmd.Parameters.AddWithValue("@neighborhoodId", neighborhoodIdFilter.Value);
+                cmd.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId.Value);
             }
             cmd.Parameters.AddWithValue("@offset", start);
             cmd.Parameters.AddWithValue("@limit", Math.Max(end - start + 1, 1));
@@ -167,11 +199,18 @@ public class Vendors
     public async Task<IActionResult> GetOne(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "vendors/{id:int}")] HttpRequest req, int id)
     {
+        var scope = ResolveNeighborhoodScope(req);
+        var scopeSql = scope.IsScoped ? "AND NeighborhoodId = @scopeNeighborhoodId" : "";
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"SELECT {SelectColumns} FROM dbo.Vendors WHERE VendorId = @id";
+        cmd.CommandText = $"SELECT {SelectColumns} FROM dbo.Vendors WHERE VendorId = @id {scopeSql}";
         cmd.Parameters.AddWithValue("@id", id);
+        if (scope.IsScoped)
+        {
+            cmd.Parameters.AddWithValue("@scopeNeighborhoodId", (object?)scope.NeighborhoodId ?? DBNull.Value);
+        }
 
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
@@ -196,9 +235,31 @@ public class Vendors
             return new BadRequestObjectResult(new { error = "Name is required." });
         }
 
-        if (body.NeighborhoodId <= 0)
+        // Un Administrador crea el proveedor directo en SU colonia --
+        // se ignora lo que haya mandado el body para NeighborhoodId
+        // (mismo criterio que CreateUnit en Units.cs). Un
+        // SuperAdministrador sí elige la colonia (ver CreateVendorDialog.tsx).
+        var scope = ResolveNeighborhoodScope(req);
+        int effectiveNeighborhoodId;
+        if (scope.IsScoped)
         {
-            return new BadRequestObjectResult(new { error = "NeighborhoodId is required." });
+            if (scope.NeighborhoodId is null)
+            {
+                return new BadRequestObjectResult(new
+                {
+                    error = "No tenés una colonia asignada. Pedile a un superadministrador que te asigne una.",
+                    message = "No tenés una colonia asignada. Pedile a un superadministrador que te asigne una.",
+                });
+            }
+            effectiveNeighborhoodId = scope.NeighborhoodId.Value;
+        }
+        else
+        {
+            if (body.NeighborhoodId <= 0)
+            {
+                return new BadRequestObjectResult(new { error = "NeighborhoodId is required." });
+            }
+            effectiveNeighborhoodId = body.NeighborhoodId;
         }
 
         await using var connection = SqlConnectionFactory.Create();
@@ -211,7 +272,7 @@ public class Vendors
         cmd.Parameters.AddWithValue("@name", body.Name);
         cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", body.Active ?? true);
-        cmd.Parameters.AddWithValue("@neighborhoodId", body.NeighborhoodId);
+        cmd.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         await reader.ReadAsync();
@@ -231,6 +292,21 @@ public class Vendors
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        // Un Administrador no puede editar un proveedor de otra colonia
+        // (404, mismo criterio que UpdateUnit/UpdateResident) ni mudarlo
+        // a otra colonia (se ignora NeighborhoodId del body si está
+        // acotado).
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            var currentNeighborhoodId = await FindVendorNeighborhoodIdAsync(connection, id);
+            if (currentNeighborhoodId is null || currentNeighborhoodId != scope.NeighborhoodId)
+            {
+                return new NotFoundResult();
+            }
+        }
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
             UPDATE dbo.Vendors
@@ -243,7 +319,7 @@ public class Vendors
         cmd.Parameters.AddWithValue("@name", (object?)body?.Name ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@phone", (object?)body?.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", (object?)body?.Active ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@neighborhoodId", (object?)body?.NeighborhoodId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@neighborhoodId", scope.IsScoped ? DBNull.Value : (object?)body?.NeighborhoodId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -255,12 +331,35 @@ public class Vendors
         return new OkObjectResult(Read(reader));
     }
 
+    // Compartido por Update/Delete para chequear el alcance por colonia
+    // de un Administrador antes de tocar la fila. Devuelve null si el
+    // proveedor no existe.
+    private static async Task<int?> FindVendorNeighborhoodIdAsync(Microsoft.Data.SqlClient.SqlConnection connection, int vendorId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT NeighborhoodId FROM dbo.Vendors WHERE VendorId = @id";
+        cmd.Parameters.AddWithValue("@id", vendorId);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is null ? null : (int)result;
+    }
+
     [Function("DeleteVendor")]
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "vendors/{id:int}")] HttpRequest req, int id)
     {
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            var currentNeighborhoodId = await FindVendorNeighborhoodIdAsync(connection, id);
+            if (currentNeighborhoodId is null || currentNeighborhoodId != scope.NeighborhoodId)
+            {
+                return new NotFoundResult();
+            }
+        }
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = "DELETE FROM dbo.Vendors OUTPUT DELETED.VendorId WHERE VendorId = @id";
         cmd.Parameters.AddWithValue("@id", id);

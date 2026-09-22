@@ -105,6 +105,9 @@ public class Residents
     //     que puede tocar los datos de un SuperAdministrador es él mismo.
     //  3. Un Administrador (sin SuperAdministrador) tampoco puede editar
     //     a OTRO Administrador. Un SuperAdministrador sí puede.
+    //  4. Un Administrador tampoco puede editar a alguien fuera de SU
+    //     colonia (ver ResolveNeighborhoodScope) -- mismo 404 que
+    //     GetResident, no un 403, para no revelar que la fila existe.
     // Devuelve null si no existe la fila -- que el UPDATE de más abajo
     // devuelva el 404 de siempre.
     private static async Task<IActionResult?> RequireCanEditResidentAsync(
@@ -120,11 +123,20 @@ public class Residents
             return null;
         }
 
-        bool targetAdministrador, targetSuperAdministrador;
+        var neighborhoodScope = ResolveNeighborhoodScope(currentUser);
+        var scopeSelect = neighborhoodScope.IsScoped
+            ? $", CASE WHEN {ResidentInNeighborhoodSql} THEN 1 ELSE 0 END AS InScope"
+            : "";
+
+        bool targetAdministrador, targetSuperAdministrador, targetInScope = true;
         await using (var cmd = connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT Administrador, SuperAdministrador FROM dbo.Residents WHERE ResidentId = @id";
+            cmd.CommandText = $"SELECT Administrador, SuperAdministrador{scopeSelect} FROM dbo.Residents WHERE ResidentId = @id";
             cmd.Parameters.AddWithValue("@id", targetId);
+            if (neighborhoodScope.IsScoped)
+            {
+                cmd.Parameters.AddWithValue("@scopeNeighborhoodId", (object?)neighborhoodScope.NeighborhoodId ?? DBNull.Value);
+            }
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
             {
@@ -132,8 +144,16 @@ public class Residents
             }
             targetAdministrador = reader.GetBoolean(reader.GetOrdinal("Administrador"));
             targetSuperAdministrador = reader.GetBoolean(reader.GetOrdinal("SuperAdministrador"));
+            if (neighborhoodScope.IsScoped)
+            {
+                targetInScope = reader.GetInt32(reader.GetOrdinal("InScope")) == 1;
+            }
         }
 
+        if (neighborhoodScope.IsScoped && !targetInScope)
+        {
+            return new NotFoundResult();
+        }
         if (targetSuperAdministrador)
         {
             return Forbidden(CannotEditMessage);
@@ -201,6 +221,51 @@ public class Residents
     // SuperAdministrador es sensible acá.
     private static bool IsAdminOnly(CurrentUser? currentUser) =>
         currentUser is { SuperAdministrador: false, Administrador: true };
+
+    // Un Administrador (sin SuperAdministrador) solo ve, en el
+    // directorio, a los residentes de SU colonia
+    // (currentUser.NeighborhoodId) -- mismo dato y mismo criterio que
+    // ResolveNeighborhoodScope en Units.cs (se duplica en vez de
+    // compartirse, cada recurso es autocontenido). Un residente "cuenta"
+    // como de esa colonia por dos caminos posibles: vive en una unidad
+    // de esa colonia (UnitId -> Units.NeighborhoodId) o es otro
+    // Administrador asignado directo a esa misma colonia (su propio
+    // NeighborhoodId, sin unidad). Sin colonia asignada todavía, no ve a
+    // NADIE (nunca "todos"). Un SuperAdministrador no tiene esta
+    // restricción.
+    private readonly record struct NeighborhoodScope(bool IsScoped, int? NeighborhoodId);
+
+    private static NeighborhoodScope ResolveNeighborhoodScope(CurrentUser? currentUser)
+    {
+        if (currentUser is null || currentUser.SuperAdministrador)
+        {
+            return new NeighborhoodScope(false, null);
+        }
+        return new NeighborhoodScope(true, currentUser.NeighborhoodId);
+    }
+
+    // SQL reutilizable para el chequeo "este residente es de la colonia
+    // @neighborhoodId" (ver ResolveNeighborhoodScope arriba). Referencia
+    // el ResidentId de la fila externa por nombre completo de tabla
+    // (dbo.Residents.ResidentId) porque, a diferencia de Units.cs, acá
+    // GetList/GetOne no le ponen alias a dbo.Residents.
+    private const string ResidentInNeighborhoodSql = @"
+        (NeighborhoodId = @scopeNeighborhoodId OR EXISTS (
+            SELECT 1 FROM dbo.Units U
+            WHERE U.UnitId = dbo.Residents.UnitId AND U.NeighborhoodId = @scopeNeighborhoodId
+        ))";
+
+    // Mismo helper que Units.cs (se duplica, cada recurso es
+    // autocontenido) -- usado en CreateResident para validar que la
+    // unidad elegida es de la colonia de quien crea.
+    private static async Task<int?> FindUnitNeighborhoodIdAsync(Microsoft.Data.SqlClient.SqlConnection connection, int unitId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT NeighborhoodId FROM dbo.Units WHERE UnitId = @id";
+        cmd.Parameters.AddWithValue("@id", unitId);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is null ? null : (int)result;
+    }
 
     [Function("GetResidents")]
     public async Task<IActionResult> GetList(
@@ -281,6 +346,17 @@ public class Residents
         var currentUser = req.HttpContext.GetCurrentUser();
         var hideSuperAdministrador = IsAdminOnly(currentUser);
 
+        // Ver ResolveNeighborhoodScope: un Administrador solo ve
+        // residentes de su propia colonia. Sin colonia asignada, no ve a
+        // nadie -- se corta acá, sin pegarle a la base.
+        var neighborhoodScope = ResolveNeighborhoodScope(currentUser);
+        if (neighborhoodScope.IsScoped && neighborhoodScope.NeighborhoodId is null)
+        {
+            req.HttpContext.Response.Headers["Content-Range"] = "residents 0-0/0";
+            req.HttpContext.Response.Headers["Access-Control-Expose-Headers"] = "Content-Range";
+            return new OkObjectResult(Array.Empty<ResidentDto>());
+        }
+
         var whereClauses = new List<string>();
         if (!string.IsNullOrWhiteSpace(nameFilter))
         {
@@ -294,6 +370,10 @@ public class Residents
         {
             whereClauses.Add("SuperAdministrador = 0");
         }
+        if (neighborhoodScope.IsScoped)
+        {
+            whereClauses.Add(ResidentInNeighborhoodSql);
+        }
         var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
         await using var connection = SqlConnectionFactory.Create();
@@ -303,6 +383,10 @@ public class Residents
         await using (var countCmd = connection.CreateCommand())
         {
             countCmd.CommandText = $"SELECT COUNT(*) FROM dbo.Residents {whereSql}";
+            if (neighborhoodScope.IsScoped)
+            {
+                countCmd.Parameters.AddWithValue("@scopeNeighborhoodId", neighborhoodScope.NeighborhoodId!.Value);
+            }
             if (!string.IsNullOrWhiteSpace(nameFilter))
             {
                 countCmd.Parameters.AddWithValue("@nameFilter", $"%{nameFilter}%");
@@ -325,6 +409,10 @@ public class Residents
                 {whereSql}
                 ORDER BY {sortField} {sortDir}
                 OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY";
+            if (neighborhoodScope.IsScoped)
+            {
+                cmd.Parameters.AddWithValue("@scopeNeighborhoodId", neighborhoodScope.NeighborhoodId!.Value);
+            }
             if (!string.IsNullOrWhiteSpace(nameFilter))
             {
                 cmd.Parameters.AddWithValue("@nameFilter", $"%{nameFilter}%");
@@ -362,9 +450,21 @@ public class Residents
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        // Ver ResolveNeighborhoodScope: fuera de la colonia de este
+        // Administrador (o sin colonia asignada todavía), el WHERE ni
+        // siquiera encuentra la fila -- mismo 404 que si el id no
+        // existiera, igual que ya pasa con un SuperAdministrador.
+        var neighborhoodScope = ResolveNeighborhoodScope(req.HttpContext.GetCurrentUser());
+        var scopeSql = neighborhoodScope.IsScoped ? $"AND {ResidentInNeighborhoodSql}" : "";
+
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = $"SELECT {SelectColumns} FROM dbo.Residents WHERE ResidentId = @id";
+        cmd.CommandText = $"SELECT {SelectColumns} FROM dbo.Residents WHERE ResidentId = @id {scopeSql}";
         cmd.Parameters.AddWithValue("@id", id);
+        if (neighborhoodScope.IsScoped)
+        {
+            cmd.Parameters.AddWithValue("@scopeNeighborhoodId", (object?)neighborhoodScope.NeighborhoodId ?? DBNull.Value);
+        }
 
         await using var reader = await cmd.ExecuteReaderAsync();
         if (!await reader.ReadAsync())
@@ -426,6 +526,26 @@ public class Residents
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        // Un Administrador solo puede crear un residente en una unidad de
+        // SU colonia (ver ResolveNeighborhoodScope) -- el selector de
+        // Unidad del formulario ya solo le ofrece esas (Units.cs también
+        // está acotado), esto es la protección real del lado del
+        // servidor por si llega otro UnitId de todos modos.
+        var neighborhoodScope = ResolveNeighborhoodScope(req.HttpContext.GetCurrentUser());
+        if (neighborhoodScope.IsScoped && body.UnitId is not null)
+        {
+            var unitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, body.UnitId.Value);
+            if (unitNeighborhoodId is null || unitNeighborhoodId != neighborhoodScope.NeighborhoodId)
+            {
+                return new BadRequestObjectResult(new
+                {
+                    error = "Esa unidad no pertenece a tu colonia.",
+                    message = "Esa unidad no pertenece a tu colonia.",
+                });
+            }
+        }
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO dbo.Residents
@@ -498,6 +618,22 @@ public class Residents
             return editForbidden;
         }
 
+        // Un Administrador no puede mudar a un residente a una unidad de
+        // otra colonia -- mismo chequeo que CreateResident.
+        var neighborhoodScope = ResolveNeighborhoodScope(req.HttpContext.GetCurrentUser());
+        if (neighborhoodScope.IsScoped && body?.UnitId is not null)
+        {
+            var unitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, body.UnitId.Value);
+            if (unitNeighborhoodId is null || unitNeighborhoodId != neighborhoodScope.NeighborhoodId)
+            {
+                return new BadRequestObjectResult(new
+                {
+                    error = "Esa unidad no pertenece a tu colonia.",
+                    message = "Esa unidad no pertenece a tu colonia.",
+                });
+            }
+        }
+
         await using var cmd = connection.CreateCommand();
         // Phone/Email/UnitId usan asignación directa, no COALESCE: son
         // opcionales, así que dejarlos en blanco en la edición debe poder
@@ -560,9 +696,20 @@ public class Residents
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        // Ver ResolveNeighborhoodScope: un Administrador no puede borrar
+        // a alguien fuera de su colonia -- el DELETE ni siquiera
+        // encuentra la fila, mismo 404 que GetResident/UpdateResident.
+        var neighborhoodScope = ResolveNeighborhoodScope(req.HttpContext.GetCurrentUser());
+        var scopeSql = neighborhoodScope.IsScoped ? $"AND {ResidentInNeighborhoodSql}" : "";
+
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM dbo.Residents OUTPUT DELETED.ResidentId WHERE ResidentId = @id";
+        cmd.CommandText = $"DELETE FROM dbo.Residents OUTPUT DELETED.ResidentId WHERE ResidentId = @id {scopeSql}";
         cmd.Parameters.AddWithValue("@id", id);
+        if (neighborhoodScope.IsScoped)
+        {
+            cmd.Parameters.AddWithValue("@scopeNeighborhoodId", (object?)neighborhoodScope.NeighborhoodId ?? DBNull.Value);
+        }
 
         try
         {

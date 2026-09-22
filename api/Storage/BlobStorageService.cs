@@ -35,13 +35,24 @@ public static class BlobStorageService
     private static BlobContainerClient GetContainerClient() =>
         new BlobServiceClient(ConnectionString).GetBlobContainerClient(ContainerName);
 
-    // Nombre de blob nuevo y único para un comprobante: "{unitId}/{guid}.{ext}"
-    // dentro del contenedor "comprobantes" — agrupado por unidad, no por
-    // pago, porque el pago todavía no existe cuando se pide la URL de
-    // subida (el flujo sube el archivo antes de crear el registro en
-    // CreatePayment, ver Payments.cs).
+    // Nombre de blob nuevo y único para un comprobante de pago:
+    // "{unitId}/{guid}.{ext}" dentro del contenedor "comprobantes" —
+    // agrupado por unidad, no por pago, porque el pago todavía no existe
+    // cuando se pide la URL de subida (el flujo sube el archivo antes de
+    // crear el registro en CreatePayment, ver Payments.cs).
     public static string NewBlobPath(int unitId, string extension) =>
         $"{unitId}/{Guid.NewGuid():N}.{extension.ToLowerInvariant()}";
+
+    // Igual que NewBlobPath, pero para el comprobante de un Gasto:
+    // "expenses/{vendorId}/{guid}.{ext}" -- con el prefijo "expenses/"
+    // para no mezclar comprobantes de gastos con los de pagos en el
+    // mismo contenedor (un UnitId y un VendorId son numeraciones
+    // independientes, así que sin el prefijo podrían "pisarse" la misma
+    // carpeta por casualidad). Agrupado por proveedor, no por gasto,
+    // mismo motivo que Payments: el gasto todavía no existe cuando se
+    // pide la URL de subida (ver CreateExpense en Expenses.cs).
+    public static string NewExpenseBlobPath(int vendorId, string extension) =>
+        $"expenses/{vendorId}/{Guid.NewGuid():N}.{extension.ToLowerInvariant()}";
 
     /// <summary>
     /// URL con SAS de escritura para subir un comprobante nuevo

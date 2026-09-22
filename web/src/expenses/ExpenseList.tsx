@@ -1,10 +1,25 @@
 import { useState } from 'react'
 import { Autocomplete, Box, MenuItem, TextField as MuiTextField } from '@mui/material'
-import { CreateButton, DateField, List, NumberField, ReferenceField, TextField, TopToolbar, useGetList, useGetOne, useListContext, useTranslate } from 'react-admin'
+import {
+  CreateButton,
+  DateField,
+  List,
+  NumberField,
+  ReferenceField,
+  TextField,
+  TopToolbar,
+  useGetList,
+  useGetOne,
+  useListContext,
+  usePermissions,
+  useTranslate,
+} from 'react-admin'
+import type { Permissions } from '../authProvider'
 import { AppDatagrid } from '../components/AppDatagrid'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { isSuperAdministrador } from '../components/RequireRole'
 
 const MONTHS = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -124,6 +139,44 @@ function YearFilter() {
   )
 }
 
+// Colonia, solo para SuperAdministrador -- un Administrador ya está
+// acotado a la suya del lado del servidor (Vendors.cs/Units.cs), así
+// que este filtro no le aporta nada. Mismo patrón manual que
+// VendorFilter, misma razón (mantener el título centrado).
+function NeighborhoodFilter() {
+  const { filterValues, setFilters } = useListContext()
+  const [inputValue, setInputValue] = useState('')
+
+  const { data: neighborhoods, isLoading } = useGetList('neighborhoods', {
+    pagination: { page: 1, perPage: 25 },
+    sort: { field: 'name', order: 'ASC' },
+    filter: inputValue ? { q: inputValue } : {},
+  })
+  const { data: selectedNeighborhood } = useGetOne(
+    'neighborhoods',
+    { id: filterValues.neighborhoodId },
+    { enabled: !!filterValues.neighborhoodId },
+  )
+
+  return (
+    <Autocomplete
+      size="small"
+      fullWidth
+      options={neighborhoods ?? []}
+      loading={isLoading}
+      getOptionLabel={(option) => option.name ?? ''}
+      isOptionEqualToValue={(option, value) => option.id === value.id}
+      value={selectedNeighborhood ?? null}
+      onChange={(_event, newValue) => {
+        const { neighborhoodId: _omit, ...rest } = filterValues
+        setFilters(newValue ? { ...rest, neighborhoodId: newValue.id } : rest, null)
+      }}
+      onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
+      renderInput={(params) => <MuiTextField {...params} label="Colonia" />}
+    />
+  )
+}
+
 // Título arriba centrado en su propia línea (igual que UnitList), y
 // debajo una fila con los filtros y "Crear" repartidos en la misma
 // grilla de 12 columnas que usa cualquier formulario del proyecto
@@ -134,11 +187,13 @@ function YearFilter() {
 // lo empuje (ver el comentario de VendorFilter arriba).
 const ExpenseListActions = () => {
   const translate = useTranslate()
+  const { permissions } = usePermissions<Permissions>()
+  const showNeighborhoodFilter = isSuperAdministrador(permissions ?? null)
   return (
     <TopToolbar sx={{ width: '100%', flexDirection: 'column', alignItems: 'stretch', mt: 3, mb: 1 }}>
       <AppPageTitle sx={{ mb: 0 }}>{translate('resources.expenses.name', { smart_count: 2 })}</AppPageTitle>
       <AppFormRow sx={{ mt: 2, alignItems: 'center' }}>
-        <AppFormCol span={4}>
+        <AppFormCol span={showNeighborhoodFilter ? 3 : 4}>
           <VendorFilter />
         </AppFormCol>
         <AppFormCol span={2}>
@@ -147,6 +202,11 @@ const ExpenseListActions = () => {
         <AppFormCol span={2}>
           <YearFilter />
         </AppFormCol>
+        {showNeighborhoodFilter ? (
+          <AppFormCol span={2}>
+            <NeighborhoodFilter />
+          </AppFormCol>
+        ) : null}
         <AppFormCol span={3}>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
             <CreateButton />

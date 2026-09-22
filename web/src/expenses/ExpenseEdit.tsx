@@ -2,6 +2,7 @@ import {
   AutocompleteInput,
   DateInput,
   Edit,
+  Labeled,
   NumberInput,
   ReferenceInput,
   required,
@@ -14,6 +15,7 @@ import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { CreateVendorDialog } from '../vendors/CreateVendorDialog'
+import { ExpenseReceiptUploadInput } from './ExpenseReceiptUploadInput'
 
 // Título con la categoría del gasto si tiene una, si no el nombre
 // genérico del recurso — igual de espíritu que UnitEdit (usa el
@@ -51,8 +53,13 @@ export function ExpenseEdit() {
           <AppFormCol span={3}>
             <DateInput source="date" validate={required()} fullWidth />
           </AppFormCol>
-          <AppFormCol span={9}>
+          <AppFormCol span={5}>
             <TextInput source="description" multiline fullWidth />
+          </AppFormCol>
+          <AppFormCol span={4}>
+            <Labeled label="Comprobante">
+              <ExpenseReceiptUploadInput source="receiptBlobPath" validate={required()} />
+            </Labeled>
           </AppFormCol>
         </AppFormRow>
       </SimpleForm>
