@@ -1,5 +1,5 @@
 import { Box } from '@mui/material'
-import { BooleanField, CreateButton, List, ReferenceField, TextField, TopToolbar, useTranslate } from 'react-admin'
+import { BooleanField, CreateButton, DateField, List, ReferenceField, TextField, TopToolbar, useTranslate } from 'react-admin'
 import { AppDatagrid } from '../components/AppDatagrid'
 import { AppPageTitle } from '../components/AppPageTitle'
 
@@ -28,6 +28,7 @@ export function SecurityStaffList() {
           <TextField source="name" />
         </ReferenceField>
         <TextField source="phone" emptyText="—" />
+        <DateField source="hireDate" emptyText="—" />
         <BooleanField source="active" />
       </AppDatagrid>
     </List>

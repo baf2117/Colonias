@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Alert, Box, Button, CircularProgress, TextField, Typography } from '@mui/material'
 import type { Auth0ContextInterface } from '@auth0/auth0-react'
+import { translatePreAdmin as t } from '../i18nProvider'
 
 type Props = {
   auth0: Auth0ContextInterface
@@ -46,22 +47,22 @@ export function RegisterResident({ auth0, onRegistered, onBack }: Props) {
       })
       if (!response.ok) {
         const data = await response.json().catch(() => null)
-        throw new Error(data?.error ?? `No se pudo completar el registro (HTTP ${response.status}).`)
+        throw new Error(data?.error ?? t('app.registration.failed', { status: response.status }))
       }
       onRegistered()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido.')
+      setError(err instanceof Error ? err.message : t('app.common.unknownError'))
       setSubmitting(false)
     }
   }
 
   return (
     <Box sx={{ maxWidth: 420, mx: 'auto', mt: 8, px: 2 }}>
-      <Typography variant="h5" component="h1" fontWeight={700} textAlign="center" sx={{ mb: 1 }}>
-        Registro de residente
+      <Typography variant="h5" component="h1" sx={{ fontWeight: 700, textAlign: 'center', mb: 1 }}>
+        {t('app.registration.residentTitle')}
       </Typography>
-      <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
-        Ingresa el código que te dio el administrador de tu colonia para asociarte a tu unidad.
+      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mb: 3 }}>
+        {t('app.registration.residentHint')}
       </Typography>
 
       {error && (
@@ -72,20 +73,20 @@ export function RegisterResident({ auth0, onRegistered, onBack }: Props) {
 
       <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <TextField
-          label="Código de la unidad"
+          label={t('app.registration.unitCode')}
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           required
           fullWidth
         />
-        <TextField label="Nombre" value={name} onChange={(e) => setName(e.target.value)} required fullWidth />
-        <TextField label="Correo" value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
-        <TextField label="Teléfono" value={phone} onChange={(e) => setPhone(e.target.value)} fullWidth />
+        <TextField label={t('app.registration.name')} value={name} onChange={(e) => setName(e.target.value)} required fullWidth />
+        <TextField label={t('app.registration.email')} value={email} onChange={(e) => setEmail(e.target.value)} fullWidth />
+        <TextField label={t('app.registration.phone')} value={phone} onChange={(e) => setPhone(e.target.value)} fullWidth />
         <Button type="submit" variant="contained" disabled={submitting} sx={{ mt: 1 }}>
-          {submitting ? <CircularProgress size={22} /> : 'Registrarme'}
+          {submitting ? <CircularProgress size={22} /> : t('app.registration.submit')}
         </Button>
         <Button type="button" onClick={onBack} disabled={submitting}>
-          Volver
+          {t('app.common.back')}
         </Button>
       </Box>
     </Box>

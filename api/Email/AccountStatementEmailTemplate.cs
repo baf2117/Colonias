@@ -232,7 +232,7 @@ public static class AccountStatementEmailTemplate
   {Row(covered ? "Queda libre" : "Falta", Money(Math.Abs(b.Surplus), c), strong: true)}
 </table>
 <div style=""margin-top:8px;"">{Bar(coveragePct, covered ? ApprovedColor : RejectedColor)}</div>
-{Caption($"Lo que debería estar ahorrado para pagar el Bono 14 (junio) y el aguinaldo (enero) de los {b.ActiveGuards} guardia{(b.ActiveGuards == 1 ? "" : "s")} de la colonia: un sueldo base cada uno, proporcional a los meses acumulados.")}";
+{Caption($"Lo que debería estar ahorrado para pagar el Bono 14 (junio) y el aguinaldo (enero) de los {b.ActiveGuards} guardia{(b.ActiveGuards == 1 ? "" : "s")} de la colonia: un sueldo base cada uno, proporcional al tiempo trabajado en cada ciclo.")}";
 
         var body = $@"
 <h1 style=""margin:0 0 6px 0; font-size:24px; line-height:1.25; font-weight:700; color:{TextColor};"">Estado de cuentas</h1>
@@ -242,7 +242,7 @@ public static class AccountStatementEmailTemplate
 
 <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"">
   <tr>
-    {KpiCell("Ingresos", Money(s.Income.Approved, c), $"{s.Income.ApprovedCount} pago{(s.Income.ApprovedCount == 1 ? "" : "s")} aprobado{(s.Income.ApprovedCount == 1 ? "" : "s")}", TextColor)}
+    {KpiCell("Ingresos", Money(s.Income.Approved, c), $"{s.Income.ApprovedCount} pago{(s.Income.ApprovedCount == 1 ? "" : "s")} recibido{(s.Income.ApprovedCount == 1 ? "" : "s")} en el mes", TextColor)}
     {KpiCell("Egresos", Money(s.Expenses.Total, c), $"{Money(s.Expenses.Operating, c)} en gastos · {Money(s.Expenses.PayrollPaid, c)} en nómina", TextColor)}
   </tr>
   <tr>
@@ -282,7 +282,7 @@ public static class AccountStatementEmailTemplate
   {Row("Unidades al día", $"{s.Income.UnitsPaid} de {s.Income.ActiveUnits}", strong: true)}
 </table>
 <div style=""margin-top:6px;"">{Bar(collectionPct, IncomeColor)}</div>
-{Caption($"{unitsWithoutPayment} unidad{(unitsWithoutPayment == 1 ? "" : "es")} sin pago aprobado en este mes.")}
+{Caption($"{unitsWithoutPayment} unidad{(unitsWithoutPayment == 1 ? "" : "es")} con la cuota de este mes sin pagar.")}
 
 {SectionTitle("Pendientes")}
 <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"">

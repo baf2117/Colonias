@@ -1,5 +1,6 @@
+import type { FC } from 'react'
 import { Chip } from '@mui/material'
-import { useRecordContext } from 'react-admin'
+import { useRecordContext, useTranslate } from 'react-admin'
 
 // Los tres estados de Payments.Status comparten el mismo look (chip sin
 // relleno, borde de 2px y texto en negrita, ambos en el color del
@@ -14,18 +15,21 @@ import { useRecordContext } from 'react-admin'
 // - rejected: error.main -- el rojo más oscuro/intenso de la rampa
 //   (más intenso que el de pending), como ya estaba, pero ahora en chip
 //   en vez de texto plano.
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  pending: { label: 'Pendiente', color: 'warning.main' },
-  approved: { label: 'Aprobado', color: 'success.main' },
-  rejected: { label: 'Rechazado', color: 'error.main' },
+// El texto de cada estado sale de app.paymentStatus.<estado>.
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'warning.main',
+  approved: 'success.main',
+  rejected: 'error.main',
 }
 
-export function PaymentStatusField() {
+export const PaymentStatusField: FC<{ label?: string }> = () => {
   const record = useRecordContext<{ status: string }>()
+  const translate = useTranslate()
   if (!record) return null
 
-  const config = STATUS_CONFIG[record.status]
-  if (!config) return null
+  const color = STATUS_COLORS[record.status]
+  if (!color) return null
+  const config = { label: translate(`app.paymentStatus.${record.status}`), color }
 
   return (
     <Chip

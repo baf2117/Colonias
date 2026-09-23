@@ -1,6 +1,7 @@
 import {
   AutocompleteInput,
   BooleanInput,
+  DateInput,
   Edit,
   NumberInput,
   ReferenceInput,
@@ -12,6 +13,7 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { notFutureDate } from '../components/notFutureDate'
 
 function SecurityStaffEditTitle() {
   const record = useRecordContext()
@@ -49,10 +51,20 @@ export function SecurityStaffEdit() {
 
         <AppFormRow>
           <AppFormCol span={4}>
-            <NumberInput source="salary" label="Sueldo" fullWidth />
+            <NumberInput source="salary" fullWidth />
           </AppFormCol>
           <AppFormCol span={4}>
-            <NumberInput source="bonuses" label="Bono" fullWidth />
+            <NumberInput source="bonuses" fullWidth />
+          </AppFormCol>
+          {/* Obligatoria también al editar: los guardias cargados antes de
+              que existiera la columna la tienen vacía y así se completa. */}
+          <AppFormCol span={4}>
+            <DateInput
+              source="hireDate"
+              validate={[required(), notFutureDate('app.guards.futureHireDate')]}
+              helperText="app.guards.hireDateHelp"
+              fullWidth
+            />
           </AppFormCol>
         </AppFormRow>
       </SimpleForm>

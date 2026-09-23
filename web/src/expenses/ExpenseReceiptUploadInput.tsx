@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, CircularProgress, Stack, Typography } from '@mui/material'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import { useAuth0 } from '@auth0/auth0-react'
-import { useInput, type Validator } from 'react-admin'
+import { InputHelperText, useInput, useTranslate, type Validator } from 'react-admin'
 import { useWatch } from 'react-hook-form'
 
 const ALLOWED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'pdf']
@@ -30,6 +30,7 @@ function extensionOf(fileName: string): string | null {
 export function ExpenseReceiptUploadInput({ source, validate }: { source: string; validate?: Validator | Validator[] }) {
   const { field, fieldState } = useInput({ source, validate })
   const auth0 = useAuth0()
+  const translate = useTranslate()
   const watchedVendorId: number | undefined = useWatch({ name: 'vendorId' })
 
   const [fileName, setFileName] = useState<string | null>(null)
@@ -45,7 +46,7 @@ export function ExpenseReceiptUploadInput({ source, validate }: { source: string
 
     const extension = extensionOf(file.name)
     if (!extension || !ALLOWED_EXTENSIONS.includes(extension)) {
-      setError('Formato no permitido. Usá JPG, PNG o PDF.')
+      setError(translate('app.upload.invalidFormat'))
       return
     }
 
@@ -64,7 +65,7 @@ export function ExpenseReceiptUploadInput({ source, validate }: { source: string
         body: JSON.stringify({ vendorId: watchedVendorId ?? 0, extension }),
       })
       if (!urlResponse.ok) {
-        throw new Error('No se pudo generar la URL de subida.')
+        throw new Error(translate('app.upload.prepareFailed'))
       }
       const { uploadUrl, blobPath } = await urlResponse.json()
 
@@ -77,13 +78,13 @@ export function ExpenseReceiptUploadInput({ source, validate }: { source: string
         body: file,
       })
       if (!putResponse.ok) {
-        throw new Error('No se pudo subir el archivo.')
+        throw new Error(translate('app.upload.uploadFailed'))
       }
 
       field.onChange(blobPath)
       setFileName(file.name)
     } catch {
-      setError('No se pudo subir el comprobante. Probá de nuevo.')
+      setError(translate('app.upload.receiptUploadFailed'))
     } finally {
       setIsUploading(false)
     }
@@ -98,12 +99,12 @@ export function ExpenseReceiptUploadInput({ source, validate }: { source: string
         startIcon={isUploading ? <CircularProgress size={16} /> : <UploadFileIcon />}
         disabled={!canUpload || isUploading}
       >
-        {isUploading ? 'Subiendo…' : field.value ? 'Reemplazar comprobante' : 'Subir comprobante'}
+        {isUploading ? translate('app.upload.uploading') : field.value ? translate('app.upload.replaceReceipt') : translate('app.upload.uploadReceipt')}
         <input type="file" hidden accept={ACCEPT} onChange={handleFileChange} />
       </Button>
       {!canUpload && (
         <Typography variant="caption" color="text.secondary">
-          Elegí primero un proveedor.
+          {translate('app.upload.chooseVendorFirst')}
         </Typography>
       )}
       {fileName && !error && (
@@ -118,7 +119,8 @@ export function ExpenseReceiptUploadInput({ source, validate }: { source: string
       )}
       {!error && fieldState.invalid && fieldState.error?.message && (
         <Typography variant="caption" color="error">
-          {fieldState.error.message}
+          {/* InputHelperText traduce la clave del validador (p.ej. ra.validation.required). */}
+          <InputHelperText error={fieldState.error.message} />
         </Typography>
       )}
     </Stack>

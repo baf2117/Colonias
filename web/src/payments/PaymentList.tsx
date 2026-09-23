@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Autocomplete, Box, MenuItem, TextField as MuiTextField } from '@mui/material'
 import {
   CreateButton,
+  DateField,
   List,
   NumberField,
   ReferenceField,
@@ -19,19 +20,11 @@ import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { isPureResident } from '../components/RequireRole'
+import { monthNames, useFormatLocale } from '../i18n/useFormatLocale'
 import { PaymentPeriodField } from './PaymentPeriodField'
 import { PaymentStatusField } from './PaymentStatusField'
 
-const MONTHS = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-]
-
-const STATUSES = [
-  { value: 'pending', label: 'Pendiente' },
-  { value: 'approved', label: 'Aprobado' },
-  { value: 'rejected', label: 'Rechazado' },
-]
+const STATUSES = ['pending', 'approved', 'rejected']
 
 // Mismo patrón que VendorFilter en ExpenseList: armado a mano (no con el
 // prop `filters` de <List> ni con <ReferenceInput>/<AutocompleteInput>)
@@ -39,6 +32,7 @@ const STATUSES = [
 // un filtro alwaysOn — ver el comentario largo en ExpenseList.tsx.
 function UnitFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
   const [inputValue, setInputValue] = useState('')
 
   const { data: units, isLoading } = useGetList('units', {
@@ -66,13 +60,14 @@ function UnitFilter() {
         setFilters(newValue ? { ...rest, unitId: newValue.id } : rest, null)
       }}
       onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
-      renderInput={(params) => <MuiTextField {...params} label="Unidad" />}
+      renderInput={(params) => <MuiTextField {...params} label={translate('app.common.unit')} />}
     />
   )
 }
 
 function StatusFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
 
   const setFilter = (value: string) => {
     const { status: _omit, ...rest } = filterValues
@@ -84,14 +79,14 @@ function StatusFilter() {
       select
       size="small"
       fullWidth
-      label="Estado"
+      label={translate('app.common.status')}
       value={filterValues.status ?? ''}
       onChange={(event) => setFilter(event.target.value)}
     >
-      <MenuItem value="">Todos</MenuItem>
+      <MenuItem value="">{translate('app.common.all')}</MenuItem>
       {STATUSES.map((status) => (
-        <MenuItem key={status.value} value={status.value}>
-          {status.label}
+        <MenuItem key={status} value={status}>
+          {translate(`app.paymentStatus.${status}`)}
         </MenuItem>
       ))}
     </MuiTextField>
@@ -102,6 +97,8 @@ function StatusFilter() {
 // ExpenseList.tsx (api/Payments.cs los traduce a MONTH(Period)/YEAR(Period)).
 function MonthFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
+  const formatLocale = useFormatLocale()
 
   const setFilter = (value: number | '') => {
     const { month: _omit, ...rest } = filterValues
@@ -113,12 +110,12 @@ function MonthFilter() {
       select
       size="small"
       fullWidth
-      label="Mes"
+      label={translate('app.common.month')}
       value={filterValues.month ?? ''}
       onChange={(event) => setFilter(event.target.value === '' ? '' : Number(event.target.value))}
     >
-      <MenuItem value="">Todos</MenuItem>
-      {MONTHS.map((month, index) => (
+      <MenuItem value="">{translate('app.common.all')}</MenuItem>
+      {monthNames(formatLocale).map((month, index) => (
         <MenuItem key={month} value={index + 1}>
           {month}
         </MenuItem>
@@ -129,6 +126,7 @@ function MonthFilter() {
 
 function YearFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 6 }, (_, i) => currentYear - i)
 
@@ -142,11 +140,11 @@ function YearFilter() {
       select
       size="small"
       fullWidth
-      label="Año"
+      label={translate('app.common.year')}
       value={filterValues.year ?? ''}
       onChange={(event) => setFilter(event.target.value === '' ? '' : Number(event.target.value))}
     >
-      <MenuItem value="">Todos</MenuItem>
+      <MenuItem value="">{translate('app.common.all')}</MenuItem>
       {years.map((year) => (
         <MenuItem key={year} value={year}>
           {year}
@@ -209,9 +207,10 @@ export function PaymentList() {
             <TextField source="identifier" />
           </ReferenceField>
         ) : null}
-        <PaymentPeriodField label="Mes" />
+        <PaymentPeriodField label="app.common.month" />
+        <DateField source="paymentDate" />
         <NumberField source="amount" options={{ minimumFractionDigits: 2 }} />
-        <PaymentStatusField label="Estado" />
+        <PaymentStatusField label="app.common.status" />
       </AppDatagrid>
     </List>
   )

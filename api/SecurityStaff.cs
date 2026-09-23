@@ -23,9 +23,9 @@ public class SecurityStaff
         _logger = logger;
     }
 
-    public record SecurityStaffDto(int Id, string Name, string? Phone, bool Active, int NeighborhoodId, string? Auth0Sub, decimal Salary, decimal Bonuses);
+    public record SecurityStaffDto(int Id, string Name, string? Phone, bool Active, int NeighborhoodId, string? Auth0Sub, decimal Salary, decimal Bonuses, DateTime? HireDate);
 
-    private const string SelectColumns = "StaffId, Name, Phone, Active, NeighborhoodId, Auth0Sub, Salary, Bonuses";
+    private const string SelectColumns = "StaffId, Name, Phone, Active, NeighborhoodId, Auth0Sub, Salary, Bonuses, HireDate";
 
     private static SecurityStaffDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
         reader.GetInt32(reader.GetOrdinal("StaffId")),
@@ -35,7 +35,8 @@ public class SecurityStaff
         reader.GetInt32(reader.GetOrdinal("NeighborhoodId")),
         reader.IsDBNull(reader.GetOrdinal("Auth0Sub")) ? null : reader.GetString(reader.GetOrdinal("Auth0Sub")),
         reader.GetDecimal(reader.GetOrdinal("Salary")),
-        reader.GetDecimal(reader.GetOrdinal("Bonuses")));
+        reader.GetDecimal(reader.GetOrdinal("Bonuses")),
+        reader.IsDBNull(reader.GetOrdinal("HireDate")) ? null : reader.GetDateTime(reader.GetOrdinal("HireDate")));
 
     // Guardias, tercer recurso del grupo Administración: mismo bloqueo total
     // que Units.cs y Expenses.cs. RegisterSecurityStaff (el auto-registro,
@@ -214,7 +215,15 @@ public class SecurityStaff
         return new OkObjectResult(Read(reader));
     }
 
-    public record CreateSecurityStaffBody(string Name, string? Phone, bool? Active, int NeighborhoodId, decimal? Salary, decimal? Bonuses);
+    // HireDate: fecha de contratación, prorratea el Bono 14 y el aguinaldo
+    // (ver AccountStatement.cs). Opcional en el API porque el auto-registro
+    // no la tiene; el formulario del dashboard la pide siempre.
+    private static DateTime TodayLocal() => DateTime.UtcNow.AddHours(-6).Date;
+
+    private static string? ValidateHireDate(DateTime? hireDate) =>
+        hireDate is not null && hireDate.Value.Date > TodayLocal() ? "La fecha de contratación no puede ser futura." : null;
+
+    public record CreateSecurityStaffBody(string Name, string? Phone, bool? Active, int NeighborhoodId, decimal? Salary, decimal? Bonuses, DateTime? HireDate);
 
     [Function("CreateSecurityStaffMember")]
     public async Task<IActionResult> Create(
@@ -239,19 +248,25 @@ public class SecurityStaff
             return new BadRequestObjectResult(new { error = "NeighborhoodId is required." });
         }
 
+        if (ValidateHireDate(body.HireDate) is { } hireDateError)
+        {
+            return new BadRequestObjectResult(new { error = hireDateError, message = hireDateError });
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO dbo.SecurityStaff (Name, Phone, Active, NeighborhoodId, Salary, Bonuses)
-            OUTPUT INSERTED.StaffId, INSERTED.Name, INSERTED.Phone, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Auth0Sub, INSERTED.Salary, INSERTED.Bonuses
-            VALUES (@name, @phone, @active, @neighborhoodId, @salary, @bonuses)";
+            INSERT INTO dbo.SecurityStaff (Name, Phone, Active, NeighborhoodId, Salary, Bonuses, HireDate)
+            OUTPUT INSERTED.StaffId, INSERTED.Name, INSERTED.Phone, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Auth0Sub, INSERTED.Salary, INSERTED.Bonuses, INSERTED.HireDate
+            VALUES (@name, @phone, @active, @neighborhoodId, @salary, @bonuses, @hireDate)";
         cmd.Parameters.AddWithValue("@name", body.Name);
         cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", body.Active ?? true);
         cmd.Parameters.AddWithValue("@neighborhoodId", body.NeighborhoodId);
         cmd.Parameters.AddWithValue("@salary", body.Salary ?? 0);
         cmd.Parameters.AddWithValue("@bonuses", body.Bonuses ?? 0);
+        cmd.Parameters.AddWithValue("@hireDate", body.HireDate is not null ? body.HireDate.Value.Date : (object)DBNull.Value);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         await reader.ReadAsync();
@@ -260,7 +275,7 @@ public class SecurityStaff
         return new CreatedResult($"/api/security-staff/{created.Id}", created);
     }
 
-    public record UpdateSecurityStaffBody(string? Name, string? Phone, bool? Active, int? NeighborhoodId, decimal? Salary, decimal? Bonuses);
+    public record UpdateSecurityStaffBody(string? Name, string? Phone, bool? Active, int? NeighborhoodId, decimal? Salary, decimal? Bonuses, DateTime? HireDate);
 
     [Function("UpdateSecurityStaffMember")]
     public async Task<IActionResult> Update(
@@ -275,6 +290,11 @@ public class SecurityStaff
         var body = await JsonSerializer.DeserializeAsync<UpdateSecurityStaffBody>(
             req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
+        if (ValidateHireDate(body?.HireDate) is { } hireDateError)
+        {
+            return new BadRequestObjectResult(new { error = hireDateError, message = hireDateError });
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();
@@ -285,8 +305,9 @@ public class SecurityStaff
                 Active = COALESCE(@active, Active),
                 NeighborhoodId = COALESCE(@neighborhoodId, NeighborhoodId),
                 Salary = COALESCE(@salary, Salary),
-                Bonuses = COALESCE(@bonuses, Bonuses)
-            OUTPUT INSERTED.StaffId, INSERTED.Name, INSERTED.Phone, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Auth0Sub, INSERTED.Salary, INSERTED.Bonuses
+                Bonuses = COALESCE(@bonuses, Bonuses),
+                HireDate = COALESCE(@hireDate, HireDate)
+            OUTPUT INSERTED.StaffId, INSERTED.Name, INSERTED.Phone, INSERTED.Active, INSERTED.NeighborhoodId, INSERTED.Auth0Sub, INSERTED.Salary, INSERTED.Bonuses, INSERTED.HireDate
             WHERE StaffId = @id";
         cmd.Parameters.AddWithValue("@name", (object?)body?.Name ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@phone", (object?)body?.Phone ?? DBNull.Value);
@@ -294,6 +315,7 @@ public class SecurityStaff
         cmd.Parameters.AddWithValue("@neighborhoodId", (object?)body?.NeighborhoodId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@salary", (object?)body?.Salary ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@bonuses", (object?)body?.Bonuses ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@hireDate", body?.HireDate is not null ? body.HireDate.Value.Date : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -392,7 +414,7 @@ public class SecurityStaff
             INSERT INTO dbo.SecurityStaff (Name, Phone, NeighborhoodId, Auth0Sub, Active)
             OUTPUT
                 INSERTED.StaffId, INSERTED.Name, INSERTED.Phone, INSERTED.Active,
-                INSERTED.NeighborhoodId, INSERTED.Auth0Sub, INSERTED.Salary, INSERTED.Bonuses
+                INSERTED.NeighborhoodId, INSERTED.Auth0Sub, INSERTED.Salary, INSERTED.Bonuses, INSERTED.HireDate
             VALUES (@name, @phone, @neighborhoodId, @sub, 1)";
         cmd.Parameters.AddWithValue("@name", body.Name.Trim());
         cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);

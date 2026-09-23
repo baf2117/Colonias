@@ -9,27 +9,30 @@
 // mano — es literalmente "todas las monedas que existen", que es lo que
 // se pidió.
 //
-// Intl.DisplayNames da el nombre de cada código en el idioma que se le
-// pida (acá, español), así el selector no obliga a memorizar códigos:
-// "Peso mexicano (MXN)" en vez de solo "MXN".
+// Intl.DisplayNames da el nombre de cada código en el idioma de la app
+// ("es" / "en", el del selector de idioma), así el selector no obliga a
+// memorizar códigos: "Peso mexicano (MXN)" / "Mexican Peso (MXN)" en vez
+// de solo "MXN".
 export type CurrencyChoice = { id: string; name: string }
 
-let cached: CurrencyChoice[] | null = null
+const cache = new Map<string, CurrencyChoice[]>()
 
-export function getCurrencyChoices(): CurrencyChoice[] {
+export function getCurrencyChoices(locale: string): CurrencyChoice[] {
+  const cached = cache.get(locale)
   if (cached) return cached
 
   const codes =
     typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('currency') : ['MXN', 'USD']
 
-  const displayNames = new Intl.DisplayNames(['es'], { type: 'currency' })
+  const displayNames = new Intl.DisplayNames([locale], { type: 'currency' })
 
-  cached = codes
+  const choices = codes
     .map((code) => {
       const name = displayNames.of(code) ?? code
       return { id: code, name: `${name} (${code})` }
     })
-    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    .sort((a, b) => a.name.localeCompare(b.name, locale))
 
-  return cached
+  cache.set(locale, choices)
+  return choices
 }

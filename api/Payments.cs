@@ -59,6 +59,7 @@ public class Payments
         DateTime? ReviewedAt,
         decimal Amount,
         DateTime Period,
+        DateTime PaymentDate,
         DateTime CreatedAt,
         string? ReviewedByName);
 
@@ -68,7 +69,7 @@ public class Payments
     // Payments sin el alias. El JOIN es LEFT porque ReviewedByUserId es
     // opcional (un pago "pending" todavía no tiene revisor).
     private const string SelectColumns =
-        "p.PaymentId, p.UnitId, p.ResidentId, p.ReceiptBlobPath, p.Status, p.RejectionReason, p.ReviewedByUserId, p.ReviewedAt, p.Amount, p.Period, p.CreatedAt, r.Name AS ReviewedByName";
+        "p.PaymentId, p.UnitId, p.ResidentId, p.ReceiptBlobPath, p.Status, p.RejectionReason, p.ReviewedByUserId, p.ReviewedAt, p.Amount, p.Period, p.PaymentDate, p.CreatedAt, r.Name AS ReviewedByName";
 
     private static readonly HashSet<string> ValidStatuses = new(StringComparer.OrdinalIgnoreCase) { "pending", "approved", "rejected" };
 
@@ -99,6 +100,7 @@ public class Payments
         reader.IsDBNull(reader.GetOrdinal("ReviewedAt")) ? null : reader.GetDateTime(reader.GetOrdinal("ReviewedAt")),
         reader.GetDecimal(reader.GetOrdinal("Amount")),
         reader.GetDateTime(reader.GetOrdinal("Period")),
+        reader.GetDateTime(reader.GetOrdinal("PaymentDate")),
         reader.GetDateTime(reader.GetOrdinal("CreatedAt")),
         HasColumn(reader, "ReviewedByName") && !reader.IsDBNull(reader.GetOrdinal("ReviewedByName"))
             ? reader.GetString(reader.GetOrdinal("ReviewedByName"))
@@ -120,6 +122,16 @@ public class Payments
     }
 
     private static DateTime FirstOfMonth(DateTime date) => new(date.Year, date.Month, 1);
+
+    // "Hoy" en Guatemala (UTC-6, sin horario de verano), no en UTC: un
+    // comprobante subido a las 7 p. m. ya sería "mañana" en UTC.
+    private static DateTime TodayLocal() => DateTime.UtcNow.AddHours(-6).Date;
+
+    // PaymentDate (día en que entró la plata, separado de Period, el mes de
+    // la cuota -- ver schema.sql): la pone el administrador. No puede ser
+    // una fecha futura. Devuelve el mensaje de error o null si es válida.
+    private static string? ValidatePaymentDate(DateTime paymentDate) =>
+        paymentDate.Date > TodayLocal() ? "La fecha de pago no puede ser futura." : null;
 
     // Devuelve el Status del pago activo (pending/approved) que ya ocupa
     // esa unidad+mes, o null si no hay ninguno. excludePaymentId es para
@@ -251,6 +263,7 @@ public class Payments
                     "amount" => "p.Amount",
                     "period" => "p.Period",
                     "createdAt" => "p.CreatedAt",
+                    "paymentDate" => "p.PaymentDate",
                     _ => "p.Period",
                 };
                 sortDir = sort[1].Equals("DESC", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
@@ -453,7 +466,7 @@ public class Payments
         return new OkObjectResult(payment);
     }
 
-    public record CreatePaymentBody(int UnitId, int? ResidentId, string? ReceiptBlobPath, string? Status, string? RejectionReason, DateTime Period);
+    public record CreatePaymentBody(int UnitId, int? ResidentId, string? ReceiptBlobPath, string? Status, string? RejectionReason, DateTime Period, DateTime? PaymentDate);
 
     [Function("CreatePayment")]
     public async Task<IActionResult> Create(
@@ -531,6 +544,16 @@ public class Payments
 
         var period = FirstOfMonth(body.Period);
 
+        // Fecha de pago: la pone el administrador (por defecto hoy). Un
+        // residente puro no la elige: queda el día en que sube el
+        // comprobante, y el administrador la corrige al revisarlo si la
+        // plata entró otro día.
+        var paymentDate = isPureResident || body.PaymentDate is null ? TodayLocal() : body.PaymentDate.Value.Date;
+        if (ValidatePaymentDate(paymentDate) is { } paymentDateError)
+        {
+            return new BadRequestObjectResult(new { error = paymentDateError, message = paymentDateError });
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
 
@@ -575,12 +598,12 @@ public class Payments
 
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT INTO dbo.Payments (UnitId, ResidentId, ReceiptBlobPath, Status, RejectionReason, ReviewedByUserId, ReviewedAt, Amount, Period)
+            INSERT INTO dbo.Payments (UnitId, ResidentId, ReceiptBlobPath, Status, RejectionReason, ReviewedByUserId, ReviewedAt, Amount, Period, PaymentDate)
             OUTPUT
                 INSERTED.PaymentId, INSERTED.UnitId, INSERTED.ResidentId, INSERTED.ReceiptBlobPath, INSERTED.Status,
                 INSERTED.RejectionReason, INSERTED.ReviewedByUserId, INSERTED.ReviewedAt, INSERTED.Amount,
-                INSERTED.Period, INSERTED.CreatedAt
-            VALUES (@unitId, @residentId, @receiptBlobPath, @status, @rejectionReason, @reviewedByUserId, @reviewedAt, @amount, @period)";
+                INSERTED.Period, INSERTED.PaymentDate, INSERTED.CreatedAt
+            VALUES (@unitId, @residentId, @receiptBlobPath, @status, @rejectionReason, @reviewedByUserId, @reviewedAt, @amount, @period, @paymentDate)";
         cmd.Parameters.AddWithValue("@unitId", unitId);
         cmd.Parameters.AddWithValue("@residentId", (object?)residentId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@receiptBlobPath", (object?)receiptBlobPath ?? DBNull.Value);
@@ -590,6 +613,7 @@ public class Payments
         cmd.Parameters.AddWithValue("@reviewedAt", (object?)reviewedAt ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@amount", effectiveAmount.Value);
         cmd.Parameters.AddWithValue("@period", period);
+        cmd.Parameters.AddWithValue("@paymentDate", paymentDate);
 
         PaymentDto created;
         await using (var reader = await cmd.ExecuteReaderAsync())
@@ -725,7 +749,7 @@ public class Payments
         return new OkObjectResult(new ReceiptViewUrlDto(view.Value.ViewUrl.ToString(), view.Value.ExpiresAt));
     }
 
-    public record UpdatePaymentBody(int? UnitId, int? ResidentId, string? ReceiptBlobPath, string? Status, string? RejectionReason, DateTime? Period);
+    public record UpdatePaymentBody(int? UnitId, int? ResidentId, string? ReceiptBlobPath, string? Status, string? RejectionReason, DateTime? Period, DateTime? PaymentDate);
 
     [Function("UpdatePayment")]
     public async Task<IActionResult> Update(
@@ -756,6 +780,11 @@ public class Payments
                 message = "No podés modificar un pago ya cargado.",
             })
             { StatusCode = StatusCodes.Status403Forbidden };
+        }
+
+        if (body?.PaymentDate is not null && ValidatePaymentDate(body.PaymentDate.Value) is { } paymentDateError)
+        {
+            return new BadRequestObjectResult(new { error = paymentDateError, message = paymentDateError });
         }
 
         await using var connection = SqlConnectionFactory.Create();
@@ -831,11 +860,12 @@ public class Payments
                 RejectionReason = @rejectionReason,
                 ReviewedByUserId = CASE WHEN @isNewReview = 1 THEN @reviewedByUserId ELSE ReviewedByUserId END,
                 ReviewedAt = CASE WHEN @isNewReview = 1 THEN @reviewedAt ELSE ReviewedAt END,
-                Period = COALESCE(@period, Period)
+                Period = COALESCE(@period, Period),
+                PaymentDate = COALESCE(@paymentDate, PaymentDate)
             OUTPUT
                 INSERTED.PaymentId, INSERTED.UnitId, INSERTED.ResidentId, INSERTED.ReceiptBlobPath, INSERTED.Status,
                 INSERTED.RejectionReason, INSERTED.ReviewedByUserId, INSERTED.ReviewedAt, INSERTED.Amount,
-                INSERTED.Period, INSERTED.CreatedAt
+                INSERTED.Period, INSERTED.PaymentDate, INSERTED.CreatedAt
             WHERE PaymentId = @id";
         cmd.Parameters.AddWithValue("@unitId", (object?)body?.UnitId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@residentId", (object?)body?.ResidentId ?? DBNull.Value);
@@ -850,6 +880,7 @@ public class Payments
         cmd.Parameters.AddWithValue("@reviewedByUserId", (object?)currentUser?.ResidentId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@reviewedAt", DateTime.UtcNow);
         cmd.Parameters.AddWithValue("@period", body?.Period is not null ? FirstOfMonth(body.Period.Value) : (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@paymentDate", body?.PaymentDate is not null ? body.PaymentDate.Value.Date : (object)DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
 
         PaymentDto updated;
@@ -1004,6 +1035,113 @@ public class Payments
         {
             _logger.LogWarning(ex, "Error al enviar el correo de revisión del pago {PaymentId}", payment.Id);
         }
+    }
+
+    public record ReplaceReceiptBody(string? ReceiptBlobPath);
+
+    // Un residente puro cambia el comprobante de SU pago mientras no esté
+    // aprobado (UpdatePayment le sigue bloqueado: no toca unidad, mes,
+    // estado ni nada más). Si el pago estaba rechazado, vuelve a "pending"
+    // para que se revise de nuevo, sin motivo de rechazo ni revisor
+    // anterior -- salvo que la unidad ya tenga otro pago activo para ese
+    // mes (misma regla de FindConflictingStatusAsync). Un administrador
+    // no usa esto: cambia el comprobante desde PaymentEdit.
+    [Function("ReplacePaymentReceipt")]
+    public async Task<IActionResult> ReplaceReceipt(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "put", Route = "payments/{id:int}/receipt")] HttpRequest req, int id)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        var isPureResident = currentUser is not null && currentUser.Residente && !currentUser.Administrador && !currentUser.SuperAdministrador;
+        if (!isPureResident || currentUser!.UnitId is null)
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo el residente de la unidad puede cambiar su comprobante desde acá.",
+                message = "Solo el residente de la unidad puede cambiar su comprobante desde acá.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+
+        var body = await JsonSerializer.DeserializeAsync<ReplaceReceiptBody>(
+            req.Body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var receiptBlobPath = body?.ReceiptBlobPath;
+        // Solo un archivo que él mismo subió a la carpeta de su unidad (ver
+        // GetPaymentReceiptUploadUrl), mismo criterio que CreatePayment.
+        if (string.IsNullOrWhiteSpace(receiptBlobPath)
+            || !receiptBlobPath.StartsWith($"{currentUser.UnitId.Value}/", StringComparison.Ordinal))
+        {
+            return new BadRequestObjectResult(new { error = "Subí el comprobante de nuevo.", message = "Subí el comprobante de nuevo." });
+        }
+
+        await using var connection = SqlConnectionFactory.Create();
+        await connection.OpenAsync();
+
+        int unitId;
+        string status;
+        DateTime period;
+        await using (var currentCmd = connection.CreateCommand())
+        {
+            currentCmd.CommandText = "SELECT UnitId, Status, Period FROM dbo.Payments WHERE PaymentId = @id";
+            currentCmd.Parameters.AddWithValue("@id", id);
+            await using var reader = await currentCmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+            {
+                return new NotFoundResult();
+            }
+            unitId = reader.GetInt32(0);
+            status = reader.GetString(1);
+            period = reader.GetDateTime(2);
+        }
+
+        // Pago de otra unidad: 404, igual que GetOne, para no confirmar que existe.
+        if (unitId != currentUser.UnitId.Value)
+        {
+            return new NotFoundResult();
+        }
+        if (status == "approved")
+        {
+            return new ConflictObjectResult(new
+            {
+                error = "Este pago ya fue aprobado; el comprobante no se puede cambiar.",
+                message = "Este pago ya fue aprobado; el comprobante no se puede cambiar.",
+            });
+        }
+        if (status == "rejected")
+        {
+            var conflict = await FindConflictingStatusAsync(connection, unitId, period, excludePaymentId: id);
+            if (conflict is not null)
+            {
+                return new ConflictObjectResult(new { error = ConflictMessage(conflict), message = ConflictMessage(conflict) });
+            }
+        }
+
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE dbo.Payments
+            SET ReceiptBlobPath = @receiptBlobPath,
+                Status = 'pending',
+                RejectionReason = NULL,
+                ReviewedByUserId = CASE WHEN Status = 'rejected' THEN NULL ELSE ReviewedByUserId END,
+                ReviewedAt = CASE WHEN Status = 'rejected' THEN NULL ELSE ReviewedAt END
+            OUTPUT
+                INSERTED.PaymentId, INSERTED.UnitId, INSERTED.ResidentId, INSERTED.ReceiptBlobPath, INSERTED.Status,
+                INSERTED.RejectionReason, INSERTED.ReviewedByUserId, INSERTED.ReviewedAt, INSERTED.Amount,
+                INSERTED.Period, INSERTED.PaymentDate, INSERTED.CreatedAt
+            WHERE PaymentId = @id AND Status <> 'approved'";
+        cmd.Parameters.AddWithValue("@receiptBlobPath", receiptBlobPath);
+        cmd.Parameters.AddWithValue("@id", id);
+
+        await using var updateReader = await cmd.ExecuteReaderAsync();
+        if (!await updateReader.ReadAsync())
+        {
+            // Lo aprobaron justo entre la lectura y el UPDATE.
+            return new ConflictObjectResult(new
+            {
+                error = "Este pago ya fue aprobado; el comprobante no se puede cambiar.",
+                message = "Este pago ya fue aprobado; el comprobante no se puede cambiar.",
+            });
+        }
+        return new OkObjectResult(Read(updateReader));
     }
 
     [Function("DeletePayment")]

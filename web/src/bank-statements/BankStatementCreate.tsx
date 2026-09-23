@@ -1,7 +1,6 @@
 import {
   AutocompleteInput,
   Create,
-  DateInput,
   Labeled,
   NumberInput,
   ReferenceInput,
@@ -13,6 +12,7 @@ import {
 } from 'react-admin'
 import type { Permissions } from '../authProvider'
 import { AppFormCol } from '../components/AppFormCol'
+import { MonthInput } from '../components/MonthInput'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { isSuperAdministrador } from '../components/RequireRole'
@@ -46,10 +46,10 @@ export function BankStatementCreate() {
             </AppFormCol>
           ) : null}
           <AppFormCol span={isSuperAdmin ? 4 : 6}>
-            <DateInput source="period" label="Mes" validate={required()} defaultValue={firstDayOfPreviousMonth()} fullWidth />
+            <MonthInput source="period" label="app.common.month" validate={required()} defaultValue={firstDayOfPreviousMonth()} fullWidth />
           </AppFormCol>
           <AppFormCol span={isSuperAdmin ? 4 : 6}>
-            <NumberInput source="bankBalance" validate={required()} fullWidth helperText="Saldo final del mes según el banco" />
+            <NumberInput source="bankBalance" validate={required()} fullWidth helperText="app.bankStatements.bankBalanceHelp" />
           </AppFormCol>
         </AppFormRow>
 
@@ -58,8 +58,8 @@ export function BankStatementCreate() {
             <TextInput source="notes" multiline fullWidth />
           </AppFormCol>
           <AppFormCol span={4}>
-            <Labeled label="Archivo">
-              <BankStatementFileUploadInput source="statementBlobPath" validate={required('Subí el archivo del estado de cuenta')} />
+            <Labeled label="app.common.file">
+              <BankStatementFileUploadInput source="statementBlobPath" validate={required('app.bankStatements.fileRequired')} />
             </Labeled>
           </AppFormCol>
         </AppFormRow>

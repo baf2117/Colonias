@@ -18,8 +18,9 @@ namespace Neighborhood;
 // una colonia -- no se suman colonias entre sí porque cada una puede
 // cobrar en su propia moneda.
 //
-// Criterios (los mismos que el Panel general, salvo nómina):
-//   - Ingresos: pagos APROBADOS cuyo Period es el mes pedido.
+// Criterios:
+//   - Ingresos: pagos APROBADOS cuya PaymentDate (día en que entró la
+//     plata) cae en el mes pedido, sin importar de qué mes es la cuota.
 //   - Egresos: gastos cuya Date cae en el mes + nómina del mes marcada
 //     como pagada (Paid = 1). A diferencia del Panel general, la nómina
 //     todavía no pagada NO cuenta como egreso: no salió plata del banco.
@@ -65,7 +66,7 @@ public class AccountStatement
 
     public record BenefitLine(int MonthsAccrued, decimal Accrued, DateTime NextPaymentMonth, decimal NextPaymentAmount);
 
-    public record GuardReserve(int StaffId, string Name, decimal Salary, decimal Bono14, decimal Aguinaldo);
+    public record GuardReserve(int StaffId, string Name, decimal Salary, DateTime? HireDate, decimal Bono14, decimal Aguinaldo);
 
     // Provisión de prestaciones de guardias (Bono 14 y aguinaldo): cuánto
     // debería estar guardado al cierre del mes para poder pagarlas, contra
@@ -80,6 +81,7 @@ public class AccountStatement
         decimal AvailableBalance,
         string AvailableSource,
         decimal Surplus,
+        int GuardsWithoutHireDate,
         IReadOnlyList<GuardReserve> Guards);
 
     public record AccountStatementDto(
@@ -109,10 +111,9 @@ public class AccountStatement
     // Se asume que cada pago se hace en su mes de pago: al cierre de ese
     // mes ya no se provisiona. Por eso el aguinaldo en diciembre pide 13/12
     // (el ciclo que cerró en noviembre, todavía sin pagar, más diciembre del
-    // ciclo nuevo). Cuenta el ciclo completo para cada guardia activo: no
-    // hay fecha de contratación en SecurityStaff (CreatedAt es la fecha de
-    // alta en el sistema), así que a un guardia nuevo se le provisiona de
-    // más, nunca de menos.
+    // ciclo nuevo). Por guardia se prorratea con SecurityStaff.HireDate (ver
+    // AccruedFor); sin fecha de contratación se le cuenta el ciclo
+    // completo: se provisiona de más, nunca de menos.
     private const int Bono14CycleStartMonth = 7;
     private const int Bono14PaymentMonth = 6;
     private const int AguinaldoCycleStartMonth = 12;
@@ -136,6 +137,31 @@ public class AccountStatement
         var monthsFromCycleStartToPayment = ((paymentMonth - cycleStart + 12) % 12) + 1;
         var previousCycleStillOwed = inCurrentCycle < monthsFromCycleStartToPayment;
         return inCurrentCycle + (previousCycleStillOwed ? 12 : 0);
+    }
+
+    // Lo acumulado por un guardia al cierre de `period` (día 1 del mes) de
+    // una prestación con `monthsAccrued` meses pendientes de pago. Si ya
+    // estaba contratado cuando arrancó lo que se debe, un sueldo × meses/12;
+    // si entró después, proporcional a los días trabajados (sueldo × días /
+    // 365, el cálculo de la ley para quien no completa el ciclo).
+    private static decimal AccruedFor(decimal salary, int monthsAccrued, DateTime period, DateTime? hireDate)
+    {
+        if (monthsAccrued <= 0)
+        {
+            return 0;
+        }
+        var owedFrom = period.AddMonths(-(monthsAccrued - 1));
+        if (hireDate is null || hireDate.Value.Date <= owedFrom)
+        {
+            return Math.Round(salary * monthsAccrued / 12m, 2);
+        }
+        var periodEnd = period.AddMonths(1).AddDays(-1);
+        if (hireDate.Value.Date > periodEnd)
+        {
+            return 0;
+        }
+        var daysWorked = (periodEnd - hireDate.Value.Date).Days + 1;
+        return Math.Round(salary * daysWorked / 365m, 2);
     }
 
     private static DateTime NextPaymentMonth(DateTime period, int paymentMonth)
@@ -475,14 +501,18 @@ public class AccountStatement
         };
 
         // --- Ingresos ---
+        // Por PaymentDate (el día en que entró la plata), no por Period (el
+        // mes de la cuota): así cuadra contra el banco aunque una casa pague
+        // en octubre la cuota de septiembre. "Unidades al día" (unitsPaid)
+        // sí sigue por Period: es cobranza de las cuotas del mes.
         var (approved, approvedCount) = await SumAndCountAsync(connection, parameters, @"
             SELECT COALESCE(SUM(P.Amount), 0), COUNT(*)
             FROM dbo.Payments P JOIN dbo.Units U ON U.UnitId = P.UnitId
-            WHERE U.NeighborhoodId = @n AND P.Period = @period AND P.Status = 'approved'");
+            WHERE U.NeighborhoodId = @n AND P.PaymentDate >= @period AND P.PaymentDate < @next AND P.Status = 'approved'");
         var (pending, pendingCount) = await SumAndCountAsync(connection, parameters, @"
             SELECT COALESCE(SUM(P.Amount), 0), COUNT(*)
             FROM dbo.Payments P JOIN dbo.Units U ON U.UnitId = P.UnitId
-            WHERE U.NeighborhoodId = @n AND P.Period = @period AND P.Status = 'pending'");
+            WHERE U.NeighborhoodId = @n AND P.PaymentDate >= @period AND P.PaymentDate < @next AND P.Status = 'pending'");
         var activeUnits = (int)await ScalarDecimalAsync(connection, parameters,
             "SELECT COUNT(*) FROM dbo.Units WHERE NeighborhoodId = @n AND Active = 1");
         var unitsPaid = (int)await ScalarDecimalAsync(connection, parameters, @"
@@ -528,7 +558,7 @@ public class AccountStatement
         var systemBalance = await ScalarDecimalAsync(connection, parameters, @"
             SELECT
                 (SELECT COALESCE(SUM(P.Amount), 0) FROM dbo.Payments P JOIN dbo.Units U ON U.UnitId = P.UnitId
-                 WHERE U.NeighborhoodId = @n AND P.Status = 'approved' AND P.Period <= @period)
+                 WHERE U.NeighborhoodId = @n AND P.Status = 'approved' AND P.PaymentDate < @next)
               - (SELECT COALESCE(SUM(E.Amount), 0) FROM dbo.Expenses E JOIN dbo.Vendors V ON V.VendorId = E.VendorId
                  WHERE V.NeighborhoodId = @n AND E.Date < @next)
               - (SELECT COALESCE(SUM(PR.Amount), 0) FROM dbo.Payroll PR JOIN dbo.SecurityStaff S ON S.StaffId = PR.StaffId
@@ -537,10 +567,10 @@ public class AccountStatement
 
         // --- Tendencia (últimos meses hasta el pedido) ---
         var trendIncome = await GroupedByPeriodAsync(connection, parameters, @"
-            SELECT P.Period, SUM(P.Amount)
+            SELECT DATEFROMPARTS(YEAR(P.PaymentDate), MONTH(P.PaymentDate), 1), SUM(P.Amount)
             FROM dbo.Payments P JOIN dbo.Units U ON U.UnitId = P.UnitId
-            WHERE U.NeighborhoodId = @n AND P.Status = 'approved' AND P.Period >= @trendStart AND P.Period <= @period
-            GROUP BY P.Period");
+            WHERE U.NeighborhoodId = @n AND P.Status = 'approved' AND P.PaymentDate >= @trendStart AND P.PaymentDate < @next
+            GROUP BY DATEFROMPARTS(YEAR(P.PaymentDate), MONTH(P.PaymentDate), 1)");
         var trendExpenses = await GroupedByPeriodAsync(connection, parameters, @"
             SELECT DATEFROMPARTS(YEAR(E.Date), MONTH(E.Date), 1), SUM(E.Amount)
             FROM dbo.Expenses E JOIN dbo.Vendors V ON V.VendorId = E.VendorId
@@ -576,7 +606,7 @@ public class AccountStatement
 
         var guards = new List<GuardReserve>();
         await using (var cmd = CreateCommand(connection, parameters, @"
-            SELECT StaffId, Name, Salary FROM dbo.SecurityStaff
+            SELECT StaffId, Name, Salary, HireDate FROM dbo.SecurityStaff
             WHERE NeighborhoodId = @n AND Active = 1
             ORDER BY Name"))
         await using (var reader = await cmd.ExecuteReaderAsync())
@@ -584,12 +614,14 @@ public class AccountStatement
             while (await reader.ReadAsync())
             {
                 var salary = reader.GetDecimal(2);
+                DateTime? hireDate = reader.IsDBNull(3) ? null : reader.GetDateTime(3);
                 guards.Add(new GuardReserve(
                     reader.GetInt32(0),
                     reader.GetString(1),
                     salary,
-                    Math.Round(salary * bono14Months / 12m, 2),
-                    Math.Round(salary * aguinaldoMonths / 12m, 2)));
+                    hireDate,
+                    AccruedFor(salary, bono14Months, period, hireDate),
+                    AccruedFor(salary, aguinaldoMonths, period, hireDate)));
             }
         }
 
@@ -608,6 +640,7 @@ public class AccountStatement
             availableBalance,
             bankBalance is not null ? "bank" : "system",
             availableBalance - totalReserve,
+            guards.Count(g => g.HireDate is null),
             guards);
 
         return new AccountStatementDto(

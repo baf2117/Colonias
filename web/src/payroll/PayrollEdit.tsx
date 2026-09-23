@@ -1,7 +1,6 @@
 import {
   AutocompleteInput,
   BooleanInput,
-  DateInput,
   Edit,
   Labeled,
   ReferenceInput,
@@ -10,6 +9,7 @@ import {
   useTranslate,
 } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
+import { MonthInput } from '../components/MonthInput'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { SuperAdminOnlyDeleteToolbar } from '../components/SuperAdminOnlyDeleteToolbar'
@@ -35,10 +35,10 @@ export function PayrollEdit() {
             </ReferenceInput>
           </AppFormCol>
           <AppFormCol span={3}>
-            <DateInput source="period" label="Mes" validate={required()} fullWidth />
+            <MonthInput source="period" label="app.common.month" validate={required()} fullWidth />
           </AppFormCol>
           <AppFormCol span={3}>
-            <Labeled label="Monto">
+            <Labeled label="app.common.amount">
               <PayrollAmountField />
             </Labeled>
           </AppFormCol>
@@ -46,7 +46,7 @@ export function PayrollEdit() {
 
         <AppFormRow>
           <AppFormCol span={3}>
-            <BooleanInput source="paid" label="Pagado" />
+            <BooleanInput source="paid" />
           </AppFormCol>
         </AppFormRow>
       </SimpleForm>

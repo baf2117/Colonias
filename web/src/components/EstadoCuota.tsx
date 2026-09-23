@@ -16,7 +16,7 @@ export function EstadoCuota({ estado }: { estado: EstadoCargo }) {
 
   if (estado === 'vencido') {
     return (
-      <Typography variant="body2" fontWeight={600} color="error.main">
+      <Typography variant="body2" color="error.main" sx={{ fontWeight: 600 }}>
         Vencido
       </Typography>
     )

@@ -1,4 +1,4 @@
-import { AutocompleteInput, BooleanInput, Edit, NumberInput, required, SimpleForm, TextInput, useRecordContext } from 'react-admin'
+import { AutocompleteInput, BooleanInput, Edit, NumberInput, required, SimpleForm, TextInput, useLocaleState, useRecordContext } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
@@ -20,6 +20,7 @@ function NeighborhoodEditTitle() {
 }
 
 export function NeighborhoodEdit() {
+  const [locale] = useLocaleState()
   return (
     <Edit redirect="list">
       <SimpleForm>
@@ -48,7 +49,7 @@ export function NeighborhoodEdit() {
             <NumberInput source="defaultFeeAmount" validate={required()} fullWidth />
           </AppFormCol>
           <AppFormCol span={3}>
-            <AutocompleteInput source="currency" choices={getCurrencyChoices()} validate={required()} fullWidth />
+            <AutocompleteInput source="currency" choices={getCurrencyChoices(locale)} validate={required()} fullWidth />
           </AppFormCol>
         </AppFormRow>
       </SimpleForm>

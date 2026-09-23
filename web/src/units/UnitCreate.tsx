@@ -66,7 +66,7 @@ export function UnitCreate() {
             <NumberInput
               source="feeAmount"
               fullWidth
-              helperText="Vacío = usa la cuota de la colonia"
+              helperText="app.units.feeHelp"
             />
           </AppFormCol>
         </AppFormRow>

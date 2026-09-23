@@ -1,4 +1,6 @@
+import type { FC } from 'react'
 import { useGetOne, useRecordContext } from 'react-admin'
+import { useFormatLocale } from '../i18n/useFormatLocale'
 
 // El monto se formatea con la moneda real de la colonia del guardia,
 // resuelta en dos saltos: Payroll -> SecurityStaff (staffId) ->
@@ -11,8 +13,9 @@ import { useGetOne, useRecordContext } from 'react-admin'
 // fijado del lado del servidor (ver GetEffectivePayrollAmountAsync en
 // Payroll.cs) y ya no editable después. Para elegir el guardia antes de
 // crear el pago, ver PayrollEffectiveAmountPreview (PayrollCreate.tsx).
-export function PayrollAmountField() {
+export const PayrollAmountField: FC<{ label?: string }> = () => {
   const record = useRecordContext<{ amount: number; staffId: number }>()
+  const formatLocale = useFormatLocale()
   const { data: staff } = useGetOne(
     'security-staff',
     { id: record?.staffId },
@@ -25,5 +28,5 @@ export function PayrollAmountField() {
   )
 
   if (!record || !neighborhood) return null
-  return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(record.amount)}</span>
+  return <span>{new Intl.NumberFormat(formatLocale, { style: 'currency', currency: neighborhood.currency }).format(record.amount)}</span>
 }

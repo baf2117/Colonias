@@ -1,22 +1,17 @@
 import { Box, Typography } from '@mui/material'
-import { Title, useGetList } from 'react-admin'
+import { Title, useGetList, useTranslate } from 'react-admin'
+import { formatMonthYear, useFormatLocale } from '../i18n/useFormatLocale'
 import { MyUnitSection } from './MyUnitSection'
-
-// El mes se calcula del reloj del navegador (Intl, sin tabla de nombres
-// a mano) en vez de venir quemado en sampleData.ts — así "Panel general"
-// siempre muestra el mes en curso sin tocar código cada mes.
-function periodoActual(): string {
-  const parts = new Intl.DateTimeFormat('es', { month: 'long', year: 'numeric' }).formatToParts(new Date())
-  const mes = parts.find((part) => part.type === 'month')?.value ?? ''
-  const anio = parts.find((part) => part.type === 'year')?.value ?? ''
-  return `${mes.charAt(0).toUpperCase()}${mes.slice(1)} ${anio}`
-}
 
 // Pantalla "Inicio". "Recaudado del mes" y "Gastos del mes" se sacaron a
 // pedido del usuario: ese resumen ahora vive en Finanzas > Estado de
-// cuentas (solo administradores). Queda el encabezado con el mes y la
-// cantidad de unidades, y la unidad propia del usuario (MyUnitSection).
+// cuentas (solo administradores). Queda el encabezado con el mes en curso
+// (del reloj del navegador, en el idioma elegido) y la cantidad de
+// unidades, y la unidad propia del usuario (MyUnitSection).
 export default function Dashboard() {
+  const translate = useTranslate()
+  const formatLocale = useFormatLocale()
+
   // perPage: 1 porque solo hace falta el total (viene en Content-Range).
   // /api/units está restringido a Administrador/SuperAdministrador (ver
   // api/Units.cs): para cualquier otro rol esto devuelve 403, así que la
@@ -28,15 +23,17 @@ export default function Dashboard() {
 
   return (
     <Box sx={{ p: { xs: 2, md: 3 } }}>
-      <Title title="Panel general" />
+      <Title title={translate('app.dashboard.title')} />
 
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" component="h1" fontWeight={700}>
-          Panel general
+        <Typography variant="h4" component="h1" sx={{ fontWeight: 700 }}>
+          {translate('app.dashboard.title')}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          {periodoActual().toUpperCase()}
-          {!unitsLoading && !unitsError && typeof unitsTotal === 'number' ? ` · ${unitsTotal} UNIDADES` : null}
+          {formatMonthYear(new Date(), formatLocale).toUpperCase()}
+          {!unitsLoading && !unitsError && typeof unitsTotal === 'number'
+            ? ` · ${translate('app.dashboard.unitsCount', { smart_count: unitsTotal })}`
+            : null}
         </Typography>
       </Box>
 

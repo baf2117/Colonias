@@ -14,6 +14,7 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { useFormatLocale } from '../i18n/useFormatLocale'
 import { ExpenseReceiptField } from './ExpenseReceiptField'
 
 // El monto se formatea con la moneda real de la colonia del gasto,
@@ -24,6 +25,7 @@ import { ExpenseReceiptField } from './ExpenseReceiptField'
 // no está directo en el registro sino a través del proveedor.
 function ExpenseAmountField() {
   const record = useRecordContext<{ amount: number; vendorId: number }>()
+  const formatLocale = useFormatLocale()
   const { data: vendor } = useGetOne(
     'vendors',
     { id: record?.vendorId },
@@ -36,7 +38,7 @@ function ExpenseAmountField() {
   )
 
   if (!record || !neighborhood) return null
-  return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(record.amount)}</span>
+  return <span>{new Intl.NumberFormat(formatLocale, { style: 'currency', currency: neighborhood.currency }).format(record.amount)}</span>
 }
 
 // Título con la categoría del gasto si tiene una, si no el nombre
@@ -95,7 +97,7 @@ export function ExpenseShow() {
             </Labeled>
           </AppFormCol>
           <AppFormCol span={4}>
-            <Labeled label="Comprobante">
+            <Labeled label="app.common.receipt">
               <ExpenseReceiptField />
             </Labeled>
           </AppFormCol>

@@ -25,6 +25,7 @@ import { BankStatementBalanceField, BankStatementNeighborhoodField } from './Ban
 // centrado.
 function YearFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 6 }, (_, i) => currentYear - i)
 
@@ -38,11 +39,11 @@ function YearFilter() {
       select
       size="small"
       fullWidth
-      label="Año"
+      label={translate('app.common.year')}
       value={filterValues.year ?? ''}
       onChange={(event) => setFilter(event.target.value === '' ? '' : Number(event.target.value))}
     >
-      <MenuItem value="">Todos</MenuItem>
+      <MenuItem value="">{translate('app.common.all')}</MenuItem>
       {years.map((year) => (
         <MenuItem key={year} value={year}>
           {year}
@@ -56,6 +57,7 @@ function YearFilter() {
 // únicamente los de su colonia.
 function NeighborhoodFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
   const [inputValue, setInputValue] = useState('')
 
   const { data: neighborhoods, isLoading } = useGetList('neighborhoods', {
@@ -83,7 +85,7 @@ function NeighborhoodFilter() {
         setFilters(newValue ? { ...rest, neighborhoodId: newValue.id } : rest, null)
       }}
       onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
-      renderInput={(params) => <MuiTextField {...params} label="Colonia" />}
+      renderInput={(params) => <MuiTextField {...params} label={translate('app.common.neighborhood')} />}
     />
   )
 }
@@ -106,7 +108,7 @@ const BankStatementListActions = () => {
         </AppFormCol>
         <AppFormCol span={isSuperAdmin ? 7 : 10}>
           <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <CreateButton label="Subir estado de cuenta" />
+            <CreateButton label="app.bankStatements.upload" />
           </Box>
         </AppFormCol>
       </AppFormRow>
@@ -120,9 +122,9 @@ export function BankStatementList() {
   return (
     <List actions={<BankStatementListActions />} sort={{ field: 'period', order: 'DESC' }}>
       <AppDatagrid rowClick="show" bulkActionButtons={false}>
-        <PaymentPeriodField label="Mes" />
-        {isSuperAdmin ? <BankStatementNeighborhoodField label="Colonia" /> : null}
-        <BankStatementBalanceField label="Saldo según el banco" />
+        <PaymentPeriodField label="app.common.month" />
+        {isSuperAdmin ? <BankStatementNeighborhoodField label="app.common.neighborhood" /> : null}
+        <BankStatementBalanceField label="app.bankStatements.bankBalance" />
         <DateField source="createdAt" />
       </AppDatagrid>
     </List>

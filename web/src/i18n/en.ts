@@ -73,6 +73,7 @@ export const customEnglishMessages = {
         neighborhoodId: 'Neighborhood',
         salary: 'Salary',
         bonuses: 'Bonus',
+        hireDate: 'Hire date',
       },
     },
     payments: {
@@ -82,6 +83,7 @@ export const customEnglishMessages = {
         unitId: 'Unit',
         residentId: 'Resident',
         period: 'Month',
+        paymentDate: 'Payment date',
         amount: 'Amount',
         status: 'Status',
         receiptBlobPath: 'Receipt',

@@ -11,6 +11,8 @@ import {
   useTranslate,
 } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
+import { MonthInput } from '../components/MonthInput'
+import { notFutureDate } from '../components/notFutureDate'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { Stack } from '@mui/material'
@@ -19,10 +21,11 @@ import { PaymentAmountField } from './PaymentAmountField'
 import { PaymentReceiptField } from './PaymentReceiptField'
 import { ReceiptUploadInput } from './ReceiptUploadInput'
 
+// SelectInput traduce el `name` de cada opción: van claves de app.paymentStatus.
 const STATUS_CHOICES = [
-  { id: 'pending', name: 'Pendiente' },
-  { id: 'approved', name: 'Aprobado' },
-  { id: 'rejected', name: 'Rechazado' },
+  { id: 'pending', name: 'app.paymentStatus.pending' },
+  { id: 'approved', name: 'app.paymentStatus.approved' },
+  { id: 'rejected', name: 'app.paymentStatus.rejected' },
 ]
 
 // Mismo formulario que PaymentCreate, precargado con los valores
@@ -57,26 +60,35 @@ export function PaymentEdit() {
             </ReferenceInput>
           </AppFormCol>
           <AppFormCol span={4}>
-            <DateInput source="period" label="Mes" validate={required()} fullWidth />
+            <MonthInput source="period" label="app.common.month" validate={required()} fullWidth />
           </AppFormCol>
         </AppFormRow>
 
         <AppFormRow>
-          <AppFormCol span={4}>
+          <AppFormCol span={3}>
             <Labeled source="amount">
               <PaymentAmountField />
             </Labeled>
           </AppFormCol>
-          <AppFormCol span={4}>
+          {/* Al revisar un pago que subió un residente, acá se corrige la
+              fecha de pago si la plata entró otro día que el de la carga. */}
+          <AppFormCol span={3}>
+            <DateInput
+              source="paymentDate"
+              validate={[required(), notFutureDate('app.payments.futurePaymentDate')]}
+              fullWidth
+            />
+          </AppFormCol>
+          <AppFormCol span={3}>
             <SelectInput source="status" choices={STATUS_CHOICES} fullWidth />
           </AppFormCol>
-          <AppFormCol span={4}>
+          <AppFormCol span={3}>
             {/* El comprobante guardado se abre con "Ver comprobante" (URL
                 firmada, igual que en PaymentShow); para cambiarlo se sube
                 otro archivo. Antes era un TextInput con la ruta interna
                 del blob, que no servía para verlo. */}
-            <Labeled label="Comprobante">
-              <Stack spacing={1} alignItems="flex-start">
+            <Labeled label="app.common.receipt">
+              <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
                 <PaymentReceiptField />
                 <ReceiptUploadInput source="receiptBlobPath" />
               </Stack>
@@ -86,7 +98,7 @@ export function PaymentEdit() {
 
         <AppFormRow>
           <AppFormCol span={12}>
-            <TextInput source="rejectionReason" label="Motivo de rechazo" multiline fullWidth />
+            <TextInput source="rejectionReason" label="app.payments.rejectionReason" multiline fullWidth />
           </AppFormCol>
         </AppFormRow>
       </SimpleForm>

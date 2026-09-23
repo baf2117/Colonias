@@ -1,7 +1,6 @@
 import {
   AutocompleteInput,
   Create,
-  DateInput,
   Labeled,
   ReferenceInput,
   required,
@@ -9,14 +8,16 @@ import {
   useTranslate,
 } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
+import { MonthInput } from '../components/MonthInput'
+import { currentMonthValue } from '../components/monthValue'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { PayrollEffectiveAmountPreview } from './PayrollEffectiveAmountPreview'
 
 // Mismo estándar de título + grilla de 12 columnas que PaymentCreate.
 // Period se manda con cualquier día del mes elegido: api/Payroll.cs lo
-// normaliza al día 1 antes de guardarlo, así que el DateInput sirve para
-// elegir "el mes", no un día puntual.
+// normaliza al día 1 antes de guardarlo; MonthInput solo deja elegir
+// "el mes", no un día puntual.
 //
 // El monto no es un campo del formulario: no se puede escribir a mano.
 // Es Salary + Bonuses del guardia (ver "Guardias: identidad paralela en
@@ -40,10 +41,10 @@ export function PayrollCreate() {
             </ReferenceInput>
           </AppFormCol>
           <AppFormCol span={3}>
-            <DateInput source="period" label="Mes" validate={required()} defaultValue={new Date().toISOString().slice(0, 10)} fullWidth />
+            <MonthInput source="period" label="app.common.month" validate={required()} defaultValue={currentMonthValue()} fullWidth />
           </AppFormCol>
           <AppFormCol span={3}>
-            <Labeled label="Monto">
+            <Labeled label="app.common.amount">
               <PayrollEffectiveAmountPreview />
             </Labeled>
           </AppFormCol>

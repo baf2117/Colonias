@@ -51,7 +51,7 @@ export function ResidentCreate() {
         <AppFormRow>
           <AppFormCol span={6}>
             <ReferenceInput source="unitId" reference="units">
-              <AutocompleteInput optionText="identifier" fullWidth helperText="Vacío = sin unidad (administrador)" />
+              <AutocompleteInput optionText="identifier" fullWidth helperText="app.residents.unitHelp" />
             </ReferenceInput>
           </AppFormCol>
           <AppFormCol span={2}>
@@ -60,9 +60,9 @@ export function ResidentCreate() {
           <AppFormCol span={4}>
             <BooleanInput
               source="receiveEmails"
-              label="Recibe correos"
+              label="app.residents.receiveEmails"
               defaultValue={true}
-              helperText="Avisos de pago aprobado/rechazado y recordatorio de pago pendiente."
+              helperText="app.residents.receiveEmailsHelp"
             />
           </AppFormCol>
         </AppFormRow>
@@ -96,9 +96,9 @@ export function ResidentCreate() {
               <ReferenceInput source="neighborhoodId" reference="neighborhoods">
                 <AutocompleteInput
                   optionText="name"
-                  label="Colonia que administra"
+                  label="app.residents.administeredNeighborhood"
                   fullWidth
-                  helperText="Solo para Administrador/SuperAdministrador. Vacío = sin colonia asignada todavía."
+                  helperText="app.residents.administeredNeighborhoodHelp"
                 />
               </ReferenceInput>
             </AppFormCol>

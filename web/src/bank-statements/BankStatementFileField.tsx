@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, CircularProgress, Typography } from '@mui/material'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { useAuth0 } from '@auth0/auth0-react'
-import { useRecordContext } from 'react-admin'
+import { useRecordContext, useTranslate } from 'react-admin'
 
 // Mismo patrón que expenses/ExpenseReceiptField.tsx: el contenedor no
 // tiene lectura pública, así que se pide una URL firmada de corta
@@ -11,6 +11,7 @@ import { useRecordContext } from 'react-admin'
 export function BankStatementFileField() {
   const record = useRecordContext<{ id: number; statementBlobPath?: string | null }>()
   const auth0 = useAuth0()
+  const translate = useTranslate()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -32,12 +33,12 @@ export function BankStatementFileField() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!response.ok) {
-        throw new Error('No se pudo generar el enlace.')
+        throw new Error(translate('app.upload.linkFailed'))
       }
       const { url } = await response.json()
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch {
-      setError('No se pudo abrir el estado de cuenta. Probá de nuevo.')
+      setError(translate('app.bankStatements.openFailed'))
     } finally {
       setIsLoading(false)
     }
@@ -52,10 +53,10 @@ export function BankStatementFileField() {
         disabled={isLoading}
         onClick={handleView}
       >
-        Ver estado de cuenta
+        {translate('app.bankStatements.view')}
       </Button>
       {error && (
-        <Typography variant="caption" color="error" display="block" sx={{ mt: 0.5 }}>
+        <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
           {error}
         </Typography>
       )}

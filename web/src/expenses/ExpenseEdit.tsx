@@ -59,7 +59,7 @@ export function ExpenseEdit() {
             <TextInput source="description" multiline fullWidth />
           </AppFormCol>
           <AppFormCol span={4}>
-            <Labeled label="Comprobante">
+            <Labeled label="app.common.receipt">
               <ExpenseReceiptUploadInput source="receiptBlobPath" validate={required()} />
             </Labeled>
           </AppFormCol>

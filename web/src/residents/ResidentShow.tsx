@@ -9,6 +9,7 @@ import {
   TopToolbar,
   usePermissions,
   useRecordContext,
+  useTranslate,
 } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
@@ -45,7 +46,8 @@ const ResidentShowActions = () => {
 // schema.sql y en el diagrama ER).
 function ResidentAccountField() {
   const record = useRecordContext<{ auth0Sub: string | null }>()
-  return <span>{record?.auth0Sub ? 'Vinculada' : 'Sin cuenta todavía'}</span>
+  const translate = useTranslate()
+  return <span>{record?.auth0Sub ? translate('app.common.accountLinked') : translate('app.common.accountNone')}</span>
 }
 
 // Misma pantalla de referencia que UnitShow (título + AppFormRow/
@@ -57,7 +59,7 @@ export function ResidentShow() {
         <ResidentShowTitle />
         <AppFormRow>
           <AppFormCol span={3}>
-            <Labeled label="Cuenta">
+            <Labeled label="app.common.account">
               <ResidentAccountField />
             </Labeled>
           </AppFormCol>
@@ -89,7 +91,7 @@ export function ResidentShow() {
         </AppFormRow>
         <AppFormRow>
           <AppFormCol span={3}>
-            <Labeled label="Recibe correos">
+            <Labeled label="app.residents.receiveEmails">
               <BooleanField source="receiveEmails" />
             </Labeled>
           </AppFormCol>

@@ -21,12 +21,12 @@ export function BankStatementShow() {
 
         <AppFormRow>
           <AppFormCol span={4}>
-            <Labeled label="Colonia">
+            <Labeled label="app.common.neighborhood">
               <BankStatementNeighborhoodField />
             </Labeled>
           </AppFormCol>
           <AppFormCol span={4}>
-            <Labeled label="Mes">
+            <Labeled label="app.common.month">
               <PaymentPeriodField />
             </Labeled>
           </AppFormCol>
@@ -39,7 +39,7 @@ export function BankStatementShow() {
 
         <AppFormRow>
           <AppFormCol span={4}>
-            <Labeled label="Archivo">
+            <Labeled label="app.common.file">
               <BankStatementFileField />
             </Labeled>
           </AppFormCol>

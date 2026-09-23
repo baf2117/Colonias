@@ -2,6 +2,7 @@ import {
   AutocompleteInput,
   BooleanInput,
   Create,
+  DateInput,
   NumberInput,
   ReferenceInput,
   required,
@@ -12,6 +13,7 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { notFutureDate } from '../components/notFutureDate'
 
 // Un guardia pertenece directo a una colonia (NeighborhoodId NOT NULL),
 // nunca a una unidad — a diferencia de Residents.UnitId, acá no hay
@@ -47,10 +49,20 @@ export function SecurityStaffCreate() {
 
         <AppFormRow>
           <AppFormCol span={3}>
-            <NumberInput source="salary" label="Sueldo" defaultValue={0} fullWidth />
+            <NumberInput source="salary" defaultValue={0} fullWidth />
           </AppFormCol>
           <AppFormCol span={3}>
-            <NumberInput source="bonuses" label="Bono" defaultValue={0} fullWidth />
+            <NumberInput source="bonuses" defaultValue={0} fullWidth />
+          </AppFormCol>
+          {/* Prorratea el Bono 14 y el aguinaldo en el estado de cuentas
+              (api/AccountStatement.cs, AccruedFor). */}
+          <AppFormCol span={3}>
+            <DateInput
+              source="hireDate"
+              validate={[required(), notFutureDate('app.guards.futureHireDate')]}
+              helperText="app.guards.hireDateHelp"
+              fullWidth
+            />
           </AppFormCol>
         </AppFormRow>
       </SimpleForm>

@@ -10,30 +10,33 @@ import {
   usePermissions,
   useGetOne,
   useRecordContext,
-  useTranslate,
 } from 'react-admin'
+import { Stack } from '@mui/material'
 import type { Permissions } from '../authProvider'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { isPureResident } from '../components/RequireRole'
+import { formatMonthYear, useFormatLocale } from '../i18n/useFormatLocale'
 import { PaymentAmountField } from './PaymentAmountField'
 import { PaymentPeriodField } from './PaymentPeriodField'
 import { PaymentReceiptField } from './PaymentReceiptField'
 import { PaymentStatusField } from './PaymentStatusField'
+import { ReplaceReceiptButton } from './ReplaceReceiptButton'
 
 // Título con la unidad y el mes ("Casa 12 — Septiembre 2026"), igual de
 // espíritu que UnitShow/ExpenseShow (usan el dato real en vez del nombre
 // genérico del recurso).
 function PaymentShowTitle() {
   const record = useRecordContext<{ unitId: number; period: string }>()
+  const formatLocale = useFormatLocale()
   const { data: unit } = useGetOne(
     'units',
     { id: record?.unitId },
     { enabled: !!record?.unitId },
   )
   if (!record) return <AppPageTitle> </AppPageTitle>
-  const period = new Intl.DateTimeFormat('es-GT', { year: 'numeric', month: 'long' }).format(new Date(record.period))
+  const period = formatMonthYear(new Date(record.period), formatLocale)
   return <AppPageTitle>{unit ? `${unit.identifier} — ${period}` : period}</AppPageTitle>
 }
 
@@ -48,7 +51,7 @@ function RejectionReasonField() {
   }
   return (
     <AppFormCol span={3}>
-      <Labeled source="rejectionReason" label="Motivo de rechazo">
+      <Labeled source="rejectionReason" label="app.payments.rejectionReason">
         <TextField source="rejectionReason" emptyText="—" />
       </Labeled>
     </AppFormCol>
@@ -112,7 +115,7 @@ export function PaymentShow() {
             </AppFormCol>
           )}
           <AppFormCol span={3}>
-            <Labeled label="Mes">
+            <Labeled label="app.common.month">
               <PaymentPeriodField />
             </Labeled>
           </AppFormCol>
@@ -130,8 +133,21 @@ export function PaymentShow() {
             </Labeled>
           </AppFormCol>
           <AppFormCol span={3}>
-            <Labeled label="Comprobante">
-              <PaymentReceiptField />
+            <Labeled label="app.common.receipt">
+              {/* Un residente puede cambiar su comprobante mientras el pago
+                  esté pendiente o rechazado (ReplaceReceiptButton se oculta
+                  solo si está aprobado). */}
+              <Stack spacing={1} sx={{ alignItems: 'flex-start' }}>
+                <PaymentReceiptField />
+                {isResident ? <ReplaceReceiptButton /> : null}
+              </Stack>
+            </Labeled>
+          </AppFormCol>
+          {/* Día en que entró la plata; puede ser de otro mes que la cuota
+              (ver PaymentDate en schema.sql). */}
+          <AppFormCol span={3}>
+            <Labeled source="paymentDate">
+              <DateField source="paymentDate" />
             </Labeled>
           </AppFormCol>
           <RejectionReasonField />
@@ -139,7 +155,7 @@ export function PaymentShow() {
 
         <AppFormRow>
           <AppFormCol span={3}>
-            <Labeled source="reviewedByUserId" label="Revisado por">
+            <Labeled source="reviewedByUserId" label="app.payments.reviewedBy">
               {isResident ? (
                 // El directorio de residentes está bloqueado del todo para
                 // un residente puro (GET /api/residents, ver "Permisos por
@@ -160,12 +176,12 @@ export function PaymentShow() {
             </Labeled>
           </AppFormCol>
           <AppFormCol span={3}>
-            <Labeled source="reviewedAt" label="Revisado el">
+            <Labeled source="reviewedAt" label="app.payments.reviewedAt">
               <DateField source="reviewedAt" showTime emptyText="—" />
             </Labeled>
           </AppFormCol>
           <AppFormCol span={3}>
-            <Labeled source="createdAt" label="Registrado el">
+            <Labeled source="createdAt" label="app.payments.createdAt">
               <DateField source="createdAt" showTime />
             </Labeled>
           </AppFormCol>

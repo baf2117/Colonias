@@ -36,6 +36,7 @@ import { isSuperAdministrador } from '../components/RequireRole'
 // fila que ya controla UnitListActions, evita ese problema.
 function NeighborhoodFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
   const [inputValue, setInputValue] = useState('')
 
   const { data: neighborhoods, isLoading } = useGetList('neighborhoods', {
@@ -63,7 +64,7 @@ function NeighborhoodFilter() {
         setFilters(newValue ? { ...rest, neighborhoodId: newValue.id } : rest, null)
       }}
       onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
-      renderInput={(params) => <MuiTextField {...params} label="Colonia" />}
+      renderInput={(params) => <MuiTextField {...params} label={translate('app.common.neighborhood')} />}
     />
   )
 }

@@ -62,8 +62,8 @@ export function ResidentEdit() {
           <AppFormCol span={4}>
             <BooleanInput
               source="receiveEmails"
-              label="Recibe correos"
-              helperText="Avisos de pago aprobado/rechazado y recordatorio de pago pendiente."
+              label="app.residents.receiveEmails"
+              helperText="app.residents.receiveEmailsHelp"
             />
           </AppFormCol>
         </AppFormRow>
@@ -79,7 +79,7 @@ export function ResidentEdit() {
           </AppFormCol>
           <AppFormCol span={3}>
             <ReferenceInput source="unitId" reference="units">
-              <AutocompleteInput optionText="identifier" fullWidth helperText="Vacío = sin unidad (administrador)" />
+              <AutocompleteInput optionText="identifier" fullWidth helperText="app.residents.unitHelp" />
             </ReferenceInput>
           </AppFormCol>
         </AppFormRow>
@@ -114,9 +114,9 @@ export function ResidentEdit() {
               <ReferenceInput source="neighborhoodId" reference="neighborhoods">
                 <AutocompleteInput
                   optionText="name"
-                  label="Colonia que administra"
+                  label="app.residents.administeredNeighborhood"
                   fullWidth
-                  helperText="Solo para Administrador/SuperAdministrador. Vacío = sin colonia asignada todavía."
+                  helperText="app.residents.administeredNeighborhoodHelp"
                 />
               </ReferenceInput>
             </AppFormCol>

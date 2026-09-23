@@ -2,6 +2,7 @@ import { useGetOne, usePermissions, useRecordContext } from 'react-admin'
 import type { Permissions } from '../authProvider'
 import { isPureResident } from '../components/RequireRole'
 import { useMyUnit } from '../dashboard/MyUnitSection'
+import { useFormatLocale } from '../i18n/useFormatLocale'
 
 // El monto se formatea con la moneda real de la colonia de la unidad que
 // paga, resuelta en dos saltos: Payment -> Unit (unitId) -> Neighborhood
@@ -28,6 +29,7 @@ export function PaymentAmountField() {
   const record = useRecordContext<{ amount: number; unitId: number }>()
   const { permissions } = usePermissions<Permissions>()
   const isResident = isPureResident(permissions ?? null)
+  const formatLocale = useFormatLocale()
 
   const { unit: myUnit } = useMyUnit()
   const { data: unit } = useGetOne(
@@ -43,5 +45,5 @@ export function PaymentAmountField() {
   )
 
   if (!record || !neighborhood) return null
-  return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(record.amount)}</span>
+  return <span>{new Intl.NumberFormat(formatLocale, { style: 'currency', currency: neighborhood.currency }).format(record.amount)}</span>
 }

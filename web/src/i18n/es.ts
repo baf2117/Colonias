@@ -73,6 +73,7 @@ export const customSpanishMessages = {
         neighborhoodId: 'Colonia',
         salary: 'Sueldo',
         bonuses: 'Bono',
+        hireDate: 'Fecha de contratación',
       },
     },
     payments: {
@@ -82,6 +83,7 @@ export const customSpanishMessages = {
         unitId: 'Unidad',
         residentId: 'Residente',
         period: 'Mes',
+        paymentDate: 'Fecha de pago',
         amount: 'Monto',
         status: 'Estado',
         receiptBlobPath: 'Comprobante',

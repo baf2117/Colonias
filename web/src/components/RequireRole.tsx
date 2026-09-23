@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react'
 import { Typography } from '@mui/material'
-import { usePermissions } from 'react-admin'
+import { usePermissions, useTranslate } from 'react-admin'
 import type { Permissions } from '../authProvider'
 
 // Punto de entrada único para todo lo que dependa de rol en el frontend:
@@ -61,9 +61,10 @@ export const canGrantSuperAdministrador = (permissions: Permissions): boolean =>
   permissions?.kind === 'resident' && permissions.superAdministrador
 
 export function AccessDenied() {
+  const translate = useTranslate()
   return (
     <Typography sx={{ p: 4 }} color="text.secondary">
-      No tenés permiso para ver esta sección.
+      {translate('app.common.accessDenied')}
     </Typography>
   )
 }

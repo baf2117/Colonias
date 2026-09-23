@@ -3,7 +3,6 @@ import {
   AppBar as MuiAppBar,
   Avatar,
   Box,
-  Divider,
   IconButton,
   Menu,
   MenuItem,
@@ -41,9 +40,9 @@ import {
 // con <IconButton>/<Menu> de MUI para que el ícono no lleve tooltip ni
 // label — nada, tal como se pidió.
 
-// El rol ("Administradora") es de ejemplo, igual que el resto del
-// cascarón: hoy no llega al frontend (solo vive en /api/Me). Las
-// iniciales del avatar, en cambio, sí son reales: vienen de
+// El dropdown solo tiene "Cerrar sesión": el rol de ejemplo
+// ("Administradora", fijo para todos) se sacó a pedido del usuario. Las
+// iniciales del avatar sí son reales: vienen de
 // identity.initials (calculadas en authProvider.ts a partir del nombre
 // o el correo de Auth0), y si hay foto de perfil se usa esa en su lugar.
 function AppUserMenu() {
@@ -71,13 +70,9 @@ function AppUserMenu() {
         </Avatar>
       </IconButton>
       <Menu anchorEl={anchorEl} open={open} onClose={handleClose} onClick={handleClose}>
-        <Box sx={{ px: 2, py: 1.5, minWidth: 180 }}>
-          <Typography variant="body2" fontWeight={600}>
-            Administradora
-          </Typography>
-        </Box>
-        <Divider />
-        <MenuItem onClick={handleLogout}>{translate('ra.auth.logout')}</MenuItem>
+        <MenuItem onClick={handleLogout} sx={{ minWidth: 180 }}>
+          {translate('ra.auth.logout')}
+        </MenuItem>
       </Menu>
     </>
   )
@@ -98,7 +93,7 @@ export function AppTopBar() {
       }}
     >
       <Toolbar disableGutters variant={isXSmall ? 'regular' : 'dense'} sx={{ px: 1 }}>
-        <Typography variant="subtitle1" fontWeight={700} letterSpacing="0.02em">
+        <Typography variant="subtitle1" sx={{ fontWeight: 700, letterSpacing: '0.02em' }}>
           COLONIAS
         </Typography>
 

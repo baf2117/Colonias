@@ -1,5 +1,6 @@
-import { Box, List, ListSubheader, Typography } from '@mui/material'
-import { Menu, usePermissions } from 'react-admin'
+import { List, ListSubheader } from '@mui/material'
+import { alpha } from '@mui/material/styles'
+import { Menu, usePermissions, useTranslate } from 'react-admin'
 import type { Permissions } from '../authProvider'
 import { isAdminOrSuperAdmin, isSuperAdministrador } from '../components/RequireRole'
 
@@ -13,8 +14,7 @@ import { isAdminOrSuperAdmin, isSuperAdministrador } from '../components/Require
 // ya no el cascarón de FeesShell), "Colonia", "Unidades", "Gastos",
 // "Guardias", "Directorio de residentes", "Balance Banco" y "Estado de
 // cuentas" (solo administradores) tienen pantalla real hoy. "Presupuesto"
-// se sacó del menú a pedido del usuario. Un ítem sin `to` se muestra como
-// placeholder visible pero sin navegación.
+// se sacó del menú a pedido del usuario; ya no quedan ítems placeholder.
 //
 // "Gastos" no tiene un ítem hermano de "Proveedores": los proveedores
 // (dbo.Vendors) se dan de alta al vuelo desde el propio formulario de
@@ -44,31 +44,33 @@ import { isAdminOrSuperAdmin, isSuperAdministrador } from '../components/Require
 // link que de todos modos va a terminar en "acceso denegado".
 // residentsOnly: cualquier usuario con fila en Residents (residente o
 // administrador), pero no un guardia (kind 'staff').
-type Item = { text: string; to?: string; adminOnly?: boolean; residentsOnly?: boolean }
+// Los textos salen de app.menu.* (i18n/app-es.ts / app-en.ts): `id` del
+// grupo y `key` del ítem son las claves, no el texto visible.
+type Item = { key: string; to: string; adminOnly?: boolean; residentsOnly?: boolean }
 
-const groups: { label: string; items: Item[] }[] = [
+const groups: { id: 'superuser' | 'general' | 'administration' | 'finance'; items: Item[] }[] = [
   {
-    label: 'SuperUsuario',
-    items: [{ text: 'Colonia', to: '/neighborhoods' }],
+    id: 'superuser',
+    items: [{ key: 'neighborhoods', to: '/neighborhoods' }],
   },
   {
-    label: 'General',
-    items: [{ text: 'Inicio', to: '/' }, { text: 'Directorio de residentes', to: '/residents', adminOnly: true }],
+    id: 'general',
+    items: [{ key: 'home', to: '/' }, { key: 'residents', to: '/residents', adminOnly: true }],
   },
   {
-    label: 'Administración',
+    id: 'administration',
     items: [
-      { text: 'Unidades', to: '/units', adminOnly: true },
-      { text: 'Gastos', to: '/expenses', adminOnly: true },
-      { text: 'Guardias', to: '/security-staff', adminOnly: true },
+      { key: 'units', to: '/units', adminOnly: true },
+      { key: 'expenses', to: '/expenses', adminOnly: true },
+      { key: 'guards', to: '/security-staff', adminOnly: true },
     ],
   },
   {
-    label: 'Finanzas',
+    id: 'finance',
     items: [
-      { text: 'Cuotas y pagos', to: '/payments' },
-      { text: 'Balance Banco', to: '/bank-statements', adminOnly: true },
-      { text: 'Estado de cuentas', to: '/account-statement', residentsOnly: true },
+      { key: 'payments', to: '/payments' },
+      { key: 'bankStatements', to: '/bank-statements', adminOnly: true },
+      { key: 'accountStatement', to: '/account-statement', residentsOnly: true },
     ],
   },
   // El grupo "Operación" (Visitas y acceso, Mantenimiento, Incidencias,
@@ -77,23 +79,8 @@ const groups: { label: string; items: Item[] }[] = [
   // siquiera tiene sentido mostrarlas como placeholder "próximamente".
 ]
 
-function PlaceholderItem({ text }: { text: string }) {
-  return (
-    <Box
-      sx={{
-        px: 2,
-        py: 1,
-        cursor: 'default',
-        color: 'text.secondary',
-        opacity: 0.6,
-      }}
-    >
-      <Typography variant="body2">{text}</Typography>
-    </Box>
-  )
-}
-
 export function AppMenu() {
+  const translate = useTranslate()
   const { permissions } = usePermissions<Permissions>()
   const resolvedPermissions = permissions ?? null
   // Mismo criterio que el grupo SuperUsuario, pero a nivel de ítem: acá
@@ -101,7 +88,7 @@ export function AppMenu() {
   // cualquiera) dentro del mismo grupo General, así que el filtro tiene
   // que aplicarse ítem por ítem, no ocultando el grupo entero.
   const visibleGroups = groups
-    .filter((group) => group.label !== 'SuperUsuario' || isSuperAdministrador(resolvedPermissions))
+    .filter((group) => group.id !== 'superuser' || isSuperAdministrador(resolvedPermissions))
     .map((group) => ({
       ...group,
       items: group.items.filter(
@@ -120,10 +107,23 @@ export function AppMenu() {
     // pt: un poco de aire entre el borde del menú superior y el primer
     // grupo, para que no arranque pegado.
     <Menu sx={{ pt: 2 }}>
-      {visibleGroups.map((group) => (
+      {visibleGroups.map((group, index) => (
         <List
-          key={group.label}
+          key={group.id}
           dense
+          // Línea gris tenue arriba de cada grupo (menos el primero) para
+          // separar las secciones. Sale de text.primary con poca opacidad,
+          // así que se ve tenue tanto en modo claro como en oscuro.
+          sx={
+            index > 0
+              ? {
+                  mt: 1,
+                  pt: 1,
+                  borderTop: '1px solid',
+                  borderColor: (theme) => alpha(theme.palette.text.primary, 0.12),
+                }
+              : undefined
+          }
           subheader={
             <ListSubheader
               disableSticky
@@ -134,23 +134,25 @@ export function AppMenu() {
                 fontWeight: 700,
                 letterSpacing: '0.08em',
                 color: 'text.secondary',
+                textDecoration: 'underline',
+                textDecorationThickness: '2px',
+                textUnderlineOffset: '4px',
               }}
             >
-              {group.label.toUpperCase()}
+              {translate(`app.menu.groups.${group.id}`).toUpperCase()}
             </ListSubheader>
           }
         >
-          {group.items.map((item) =>
-            item.to ? (
+          {group.items.map((item) => (
               // El ítem activo (react-admin agrega la clase
               // RaMenuItemLink-active vía NavLink) toma el acento único de
               // la plataforma (primary.main), con una regla de 2px a la
               // izquierda — el mismo motivo de "una sola línea de 2px" que
               // ya usan los botones outlined y los dividers del tema.
               <Menu.Item
-                key={item.text}
+                key={item.key}
                 to={item.to}
-                primaryText={item.text}
+                primaryText={translate(`app.menu.${item.key}`)}
                 sx={{
                   '&.RaMenuItemLink-active': {
                     color: 'primary.main',
@@ -160,10 +162,7 @@ export function AppMenu() {
                   },
                 }}
               />
-            ) : (
-              <PlaceholderItem key={item.text} text={item.text} />
-            ),
-          )}
+          ))}
         </List>
       ))}
     </Menu>

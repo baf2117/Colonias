@@ -1,11 +1,11 @@
 import { Box, Stack, Typography } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
+import { useTranslate } from 'react-admin'
+import { useFormatLocale } from '../i18n/useFormatLocale'
 
 export type TrendPoint = { period: string; income: number; expenses: number; bankBalance: number | null }
 export type CategoryAmount = { category: string; amount: number }
 
-const compact = new Intl.NumberFormat('es', { notation: 'compact', maximumFractionDigits: 1 })
-const monthShort = new Intl.DateTimeFormat('es', { month: 'short' })
 
 // "Techo" redondo para el eje: 1, 2 o 5 × 10^k, para que las marcas caigan
 // en números legibles en vez de 13.847.
@@ -22,7 +22,7 @@ function Legend({ items }: { items: { label: string; color: string }[] }) {
   return (
     <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
       {items.map((item) => (
-        <Stack key={item.label} direction="row" spacing={0.75} alignItems="center">
+        <Stack key={item.label} direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
           <Box sx={{ width: 10, height: 10, bgcolor: item.color }} />
           <Typography variant="caption" color="text.secondary">
             {item.label}
@@ -37,6 +37,12 @@ function Legend({ items }: { items: { label: string; color: string }[] }) {
 // elegido). El último grupo es el mes elegido y va resaltado.
 export function TrendChart({ points, formatMoney }: { points: TrendPoint[]; formatMoney: (value: number) => string }) {
   const theme = useTheme()
+  const translate = useTranslate()
+  const formatLocale = useFormatLocale()
+  const compact = new Intl.NumberFormat(formatLocale, { notation: 'compact', maximumFractionDigits: 1 })
+  const monthShort = new Intl.DateTimeFormat(formatLocale, { month: 'short' })
+  const incomeLabel = translate('app.accountStatement.income')
+  const expensesLabel = translate('app.accountStatement.expenses')
   const incomeColor = theme.palette.success.main
   const expenseColor = theme.palette.primary.main
   const textColor = theme.palette.text.secondary
@@ -59,16 +65,16 @@ export function TrendChart({ points, formatMoney }: { points: TrendPoint[]; form
     <Stack spacing={1.5}>
       <Legend
         items={[
-          { label: 'Ingresos', color: incomeColor },
-          { label: 'Egresos', color: expenseColor },
+          { label: incomeLabel, color: incomeColor },
+          { label: expensesLabel, color: expenseColor },
         ]}
       />
       <Box sx={{ overflowX: 'auto' }}>
-        <svg viewBox={`0 0 ${width} ${height}`} width="100%" style={{ minWidth: 420, display: 'block' }} role="img" aria-label="Ingresos y egresos por mes">
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" style={{ minWidth: 420, display: 'block' }} role="img" aria-label={translate('app.accountStatement.trendAria')}>
           {ticks.map((tick) => (
             <g key={tick}>
               <line x1={margin.left} x2={width - margin.right} y1={y(tick)} y2={y(tick)} stroke={gridColor} strokeWidth={tick === 0 ? 2 : 1} strokeDasharray={tick === 0 ? undefined : '3 4'} />
-              <text x={margin.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" fontSize={11} fill={textColor}>
+              <text x={margin.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" fontSize={13} fill={textColor}>
                 {compact.format(tick)}
               </text>
             </g>
@@ -84,12 +90,12 @@ export function TrendChart({ points, formatMoney }: { points: TrendPoint[]; form
                   <rect x={cx - groupW / 2 + 2} y={margin.top} width={groupW - 4} height={plotH} fill={theme.palette.action.hover} />
                 ) : null}
                 <rect x={cx - barW - 2} y={y(point.income)} width={barW} height={Math.max(0, y(0) - y(point.income))} fill={incomeColor}>
-                  <title>{`Ingresos: ${formatMoney(point.income)}`}</title>
+                  <title>{`${incomeLabel}: ${formatMoney(point.income)}`}</title>
                 </rect>
                 <rect x={cx + 2} y={y(point.expenses)} width={barW} height={Math.max(0, y(0) - y(point.expenses))} fill={expenseColor}>
-                  <title>{`Egresos: ${formatMoney(point.expenses)}`}</title>
+                  <title>{`${expensesLabel}: ${formatMoney(point.expenses)}`}</title>
                 </rect>
-                <text x={cx} y={height - 14} textAnchor="middle" fontSize={11} fontWeight={isSelected ? 700 : 400} fill={isSelected ? theme.palette.text.primary : textColor}>
+                <text x={cx} y={height - 14} textAnchor="middle" fontSize={13} fontWeight={isSelected ? 700 : 400} fill={isSelected ? theme.palette.text.primary : textColor}>
                   {label}
                 </text>
               </g>
@@ -105,12 +111,13 @@ export function TrendChart({ points, formatMoney }: { points: TrendPoint[]; form
 // mayor. La nómina pagada entra como una categoría más.
 export function ExpenseBreakdown({ items, formatMoney }: { items: CategoryAmount[]; formatMoney: (value: number) => string }) {
   const theme = useTheme()
+  const translate = useTranslate()
   const max = Math.max(0, ...items.map((item) => item.amount))
 
   if (items.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
-        No hay egresos registrados en este mes.
+        {translate('app.accountStatement.noExpenses')}
       </Typography>
     )
   }
@@ -119,11 +126,11 @@ export function ExpenseBreakdown({ items, formatMoney }: { items: CategoryAmount
     <Stack spacing={1.5}>
       {items.map((item) => (
         <Box key={item.category}>
-          <Stack direction="row" justifyContent="space-between" spacing={2}>
+          <Stack direction="row" spacing={2} sx={{ justifyContent: 'space-between' }}>
             <Typography variant="body2" sx={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {item.category}
             </Typography>
-            <Typography variant="body2" fontWeight={600} sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
               {formatMoney(item.amount)}
             </Typography>
           </Stack>

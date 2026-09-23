@@ -1,5 +1,6 @@
-import { DateInput, Edit, Labeled, NumberInput, required, SimpleForm, TextInput, useTranslate } from 'react-admin'
+import { Edit, Labeled, NumberInput, required, SimpleForm, TextInput, useTranslate } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
+import { MonthInput } from '../components/MonthInput'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { SuperAdminOnlyDeleteToolbar } from '../components/SuperAdminOnlyDeleteToolbar'
@@ -18,12 +19,12 @@ export function BankStatementEdit() {
 
         <AppFormRow>
           <AppFormCol span={4}>
-            <Labeled label="Colonia">
+            <Labeled label="app.common.neighborhood">
               <BankStatementNeighborhoodField />
             </Labeled>
           </AppFormCol>
           <AppFormCol span={4}>
-            <DateInput source="period" label="Mes" validate={required()} fullWidth />
+            <MonthInput source="period" label="app.common.month" validate={required()} fullWidth />
           </AppFormCol>
           <AppFormCol span={4}>
             <NumberInput source="bankBalance" validate={required()} fullWidth />
@@ -35,7 +36,7 @@ export function BankStatementEdit() {
             <TextInput source="notes" multiline fullWidth />
           </AppFormCol>
           <AppFormCol span={4}>
-            <Labeled label="Archivo">
+            <Labeled label="app.common.file">
               <BankStatementFileUploadInput source="statementBlobPath" validate={required()} />
             </Labeled>
           </AppFormCol>

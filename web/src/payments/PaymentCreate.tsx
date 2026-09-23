@@ -14,6 +14,9 @@ import {
 import { useFormContext, useWatch } from 'react-hook-form'
 import type { Permissions } from '../authProvider'
 import { AppFormCol } from '../components/AppFormCol'
+import { MonthInput } from '../components/MonthInput'
+import { currentDayValue, currentMonthValue } from '../components/monthValue'
+import { notFutureDate } from '../components/notFutureDate'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { isPureResident } from '../components/RequireRole'
@@ -43,16 +46,17 @@ function ResidentInput() {
   )
 }
 
+// SelectInput traduce el `name` de cada opción: van claves de app.paymentStatus.
 const STATUS_CHOICES = [
-  { id: 'pending', name: 'Pendiente' },
-  { id: 'approved', name: 'Aprobado' },
-  { id: 'rejected', name: 'Rechazado' },
+  { id: 'pending', name: 'app.paymentStatus.pending' },
+  { id: 'approved', name: 'app.paymentStatus.approved' },
+  { id: 'rejected', name: 'app.paymentStatus.rejected' },
 ]
 
 // Mismo estándar de título + grilla de 12 columnas que ExpenseCreate.
 // Period se manda con cualquier día del mes elegido: api/Payments.cs lo
-// normaliza al día 1 antes de guardarlo, así que el DateInput sirve para
-// elegir "el mes", no un día puntual.
+// normaliza al día 1 antes de guardarlo; MonthInput solo deja elegir
+// "el mes", no un día puntual.
 //
 // La regla central que pidió el usuario (no permitir un segundo pago
 // pendiente/aprobado para la misma unidad y mes) la aplica el servidor,
@@ -103,15 +107,15 @@ export function PaymentCreate() {
           // ahora que no comparte con Unidad/Residente.
           <AppFormRow>
             <AppFormCol span={4}>
-              <DateInput source="period" label="Mes" validate={required()} defaultValue={new Date().toISOString().slice(0, 10)} fullWidth />
+              <MonthInput source="period" label="app.common.month" validate={required()} defaultValue={currentMonthValue()} monthsBack={1} monthsAhead={1} fullWidth />
             </AppFormCol>
             <AppFormCol span={4}>
-              <Labeled label="Monto">
+              <Labeled label="app.common.amount">
                 <PaymentEffectiveAmountPreview />
               </Labeled>
             </AppFormCol>
             <AppFormCol span={4}>
-              <Labeled label="Comprobante">
+              <Labeled label="app.common.receipt">
                 <ReceiptUploadInput source="receiptBlobPath" />
               </Labeled>
             </AppFormCol>
@@ -128,21 +132,36 @@ export function PaymentCreate() {
                 <ResidentInput />
               </AppFormCol>
               <AppFormCol span={4}>
-                <DateInput source="period" label="Mes" validate={required()} defaultValue={new Date().toISOString().slice(0, 10)} fullWidth />
+                {/* Un administrador puede registrar pagos atrasados: hasta 5
+                    meses para atrás. El residente solo anterior/actual/siguiente. */}
+                <MonthInput source="period" label="app.common.month" validate={required()} defaultValue={currentMonthValue()} monthsBack={5} monthsAhead={1} fullWidth />
               </AppFormCol>
             </AppFormRow>
 
             <AppFormRow>
-              <AppFormCol span={4}>
-                <Labeled label="Monto">
+              <AppFormCol span={3}>
+                <Labeled label="app.common.amount">
                   <PaymentEffectiveAmountPreview />
                 </Labeled>
               </AppFormCol>
-              <AppFormCol span={4}>
+              {/* Fecha de pago: el día en que entró la plata, que puede ser
+                  de otro mes que la cuota. Solo la pone el administrador
+                  (a un residente el API le deja el día en que sube el
+                  comprobante). Es lo que usa el estado de cuentas para
+                  cuadrar contra el banco. */}
+              <AppFormCol span={3}>
+                <DateInput
+                  source="paymentDate"
+                  validate={[required(), notFutureDate('app.payments.futurePaymentDate')]}
+                  defaultValue={currentDayValue()}
+                  fullWidth
+                />
+              </AppFormCol>
+              <AppFormCol span={3}>
                 <SelectInput source="status" choices={STATUS_CHOICES} defaultValue="pending" fullWidth />
               </AppFormCol>
-              <AppFormCol span={4}>
-                <Labeled label="Comprobante">
+              <AppFormCol span={3}>
+                <Labeled label="app.common.receipt">
                   <ReceiptUploadInput source="receiptBlobPath" />
                 </Labeled>
               </AppFormCol>

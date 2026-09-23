@@ -177,10 +177,20 @@ CREATE TABLE dbo.Payments (
     ReviewedAt          DATETIME2       NULL,
     Amount              DECIMAL(10,2)   NOT NULL DEFAULT 0,   -- monto real del comprobante subido
     Period              DATE            NOT NULL,   -- mes que cubre el pago, normalizado al día 1
+    PaymentDate         DATE            NOT NULL,   -- día en que se pagó (entró la plata); ver nota abajo
     CreatedAt           DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
 CREATE INDEX IX_Payments_UnitId_Period ON dbo.Payments(UnitId, Period);
+CREATE INDEX IX_Payments_PaymentDate ON dbo.Payments(PaymentDate);
+
+-- PaymentDate (agregada 2026-09-22): una cuota de un mes se puede pagar en
+-- otro (una casa que se pone al día en octubre y paga septiembre). Period
+-- dice a qué cuota corresponde (cobranza, "unidades al día",
+-- recordatorios); PaymentDate dice cuándo entró la plata, y es lo que usa
+-- el estado de cuentas para cuadrar contra el banco (AccountStatement.cs).
+-- Los pagos anteriores a esta columna tomaron la fecha en que se cargaron
+-- (CAST(CreatedAt AS DATE)).
 
 -- Control del Timer Trigger de recordatorios de pago (PaymentReminders.cs):
 -- una fila por unidad+período ya avisado, para no mandar el mismo
@@ -276,6 +286,7 @@ CREATE TABLE dbo.SecurityStaff (
     NeighborhoodId  INT             NOT NULL REFERENCES dbo.Neighborhoods(NeighborhoodId),
     Salary          DECIMAL(10,2)   NOT NULL DEFAULT 0,   -- sueldo base recurrente; junto con Bonuses arma el Amount de cada pago de nómina (ver dbo.Payroll)
     Bonuses         DECIMAL(10,2)   NOT NULL DEFAULT 0,   -- bono recurrente; editable a mano igual que Salary
+    HireDate        DATE            NULL,   -- fecha de contratación; prorratea Bono 14 y aguinaldo (NULL: ciclo completo, ver AccountStatement.cs)
     CreatedAt       DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
 

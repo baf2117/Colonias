@@ -10,8 +10,10 @@ import {
   TextField,
   TopToolbar,
   useRecordContext,
+  useTranslate,
 } from 'react-admin'
 import { AppDatagrid } from '../components/AppDatagrid'
+import { useFormatLocale } from '../i18n/useFormatLocale'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
@@ -23,8 +25,9 @@ import { AppPageTitle } from '../components/AppPageTitle'
 // para una colonia en USD).
 function NeighborhoodFeeAmountField() {
   const record = useRecordContext<{ defaultFeeAmount: number; currency: string }>()
+  const formatLocale = useFormatLocale()
   if (!record) return null
-  return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: record.currency }).format(record.defaultFeeAmount)}</span>
+  return <span>{new Intl.NumberFormat(formatLocale, { style: 'currency', currency: record.currency }).format(record.defaultFeeAmount)}</span>
 }
 
 // Título con el nombre real de la colonia (no "Colonia" genérico): así
@@ -50,15 +53,16 @@ const NeighborhoodShowActions = () => (
 // El botón "Nuevo guardia" precarga neighborhoodId en SecurityStaffCreate.
 function NeighborhoodStaffSection() {
   const record = useRecordContext()
+  const translate = useTranslate()
   if (!record) return null
   return (
     <Box sx={{ width: '100%', mt: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-        <Typography variant="h6">Guardias</Typography>
-        <CreateButton resource="security-staff" label="Nuevo guardia" state={{ record: { neighborhoodId: record.id } }} />
+        <Typography variant="h6">{translate('resources.security-staff.name', { smart_count: 2 })}</Typography>
+        <CreateButton resource="security-staff" label="app.neighborhoods.newGuard" state={{ record: { neighborhoodId: record.id } }} />
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        También pueden registrarse ellos mismos con el código de arriba al iniciar sesión por primera vez.
+        {translate('app.common.selfRegisterHint')}
       </Typography>
       <ReferenceManyField reference="security-staff" target="neighborhoodId" label={false}>
         <AppDatagrid rowClick="show" bulkActionButtons={false}>
@@ -130,7 +134,7 @@ export function NeighborhoodShow() {
             </Labeled>
           </AppFormCol>
           <AppFormCol span={3}>
-            <Labeled label="Código de registro (guardias)">
+            <Labeled label="app.neighborhoods.staffRegistrationCode">
               <TextField source="staffRegistrationCode" />
             </Labeled>
           </AppFormCol>

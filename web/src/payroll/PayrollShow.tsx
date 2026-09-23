@@ -13,6 +13,7 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { formatMonthYear, useFormatLocale } from '../i18n/useFormatLocale'
 import { PayrollAmountField } from './PayrollAmountField'
 import { PayrollPeriodField } from './PayrollPeriodField'
 
@@ -20,13 +21,14 @@ import { PayrollPeriodField } from './PayrollPeriodField'
 // mismo espíritu que PaymentShowTitle.
 function PayrollShowTitle() {
   const record = useRecordContext<{ staffId: number; period: string }>()
+  const formatLocale = useFormatLocale()
   const { data: staff } = useGetOne(
     'security-staff',
     { id: record?.staffId },
     { enabled: !!record?.staffId },
   )
   if (!record) return <AppPageTitle> </AppPageTitle>
-  const period = new Intl.DateTimeFormat('es-GT', { year: 'numeric', month: 'long' }).format(new Date(record.period))
+  const period = formatMonthYear(new Date(record.period), formatLocale)
   return <AppPageTitle>{staff ? `${staff.name} — ${period}` : period}</AppPageTitle>
 }
 
@@ -53,7 +55,7 @@ export function PayrollShow() {
             </Labeled>
           </AppFormCol>
           <AppFormCol span={3}>
-            <Labeled label="Mes">
+            <Labeled label="app.common.month">
               <PayrollPeriodField />
             </Labeled>
           </AppFormCol>

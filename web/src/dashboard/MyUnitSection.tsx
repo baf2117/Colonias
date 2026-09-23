@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Card, Typography } from '@mui/material'
 import { useAuth0 } from '@auth0/auth0-react'
-import { useGetOne } from 'react-admin'
+import { useGetOne, useTranslate } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
+import { useFormatLocale } from '../i18n/useFormatLocale'
+import { MonthlyPaymentCard } from './MonthlyPaymentCard'
 
 // Exportado: PaymentCreate.tsx también lo usa (vía useMyUnit más abajo)
 // para calcular la cuota efectiva de un residente puro sin que este tenga
@@ -68,6 +70,8 @@ export function useMyUnit() {
 // moneda que ya usa UnitFeeAmountField en UnitShow.tsx.
 export function MyUnitSection() {
   const { unit, isLoading } = useMyUnit()
+  const translate = useTranslate()
+  const formatLocale = useFormatLocale()
   const { data: neighborhood } = useGetOne(
     'neighborhoods',
     { id: unit?.neighborhoodId },
@@ -79,46 +83,51 @@ export function MyUnitSection() {
   const effectiveFee = unit.feeAmount ?? neighborhood?.defaultFeeAmount
 
   return (
+    <>
+    {/* Cuota del mes en curso + acceso a cargar el comprobante. Va acá
+        (y no suelta en Dashboard) para reusar la unidad ya cargada. */}
+    <MonthlyPaymentCard unit={unit} fee={effectiveFee ?? null} currency={neighborhood?.currency ?? null} />
     <Card variant="outlined" sx={{ p: 2.5, mb: 3 }}>
-      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1.5, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-        Mi unidad
+      <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 1.5, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+        {translate('app.dashboard.myUnit')}
       </Typography>
       <AppFormRow>
         <AppFormCol span={3}>
           <Typography variant="body2" color="text.secondary">
-            Unidad
+            {translate('app.common.unit')}
           </Typography>
-          <Typography variant="body1" fontWeight={600}>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>
             {unit.identifier}
           </Typography>
         </AppFormCol>
         <AppFormCol span={3}>
           <Typography variant="body2" color="text.secondary">
-            Colonia
+            {translate('app.common.neighborhood')}
           </Typography>
-          <Typography variant="body1" fontWeight={600}>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>
             {neighborhood?.name ?? '—'}
           </Typography>
         </AppFormCol>
         <AppFormCol span={3}>
           <Typography variant="body2" color="text.secondary">
-            Dirección
+            {translate('app.dashboard.address')}
           </Typography>
-          <Typography variant="body1" fontWeight={600}>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>
             {unit.address ?? '—'}
           </Typography>
         </AppFormCol>
         <AppFormCol span={3}>
           <Typography variant="body2" color="text.secondary">
-            Cuota
+            {translate('app.dashboard.fee')}
           </Typography>
-          <Typography variant="body1" fontWeight={600}>
+          <Typography variant="body1" sx={{ fontWeight: 600 }}>
             {neighborhood && effectiveFee != null
-              ? new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(effectiveFee)
+              ? new Intl.NumberFormat(formatLocale, { style: 'currency', currency: neighborhood.currency }).format(effectiveFee)
               : '—'}
           </Typography>
         </AppFormCol>
       </AppFormRow>
     </Card>
+    </>
   )
 }

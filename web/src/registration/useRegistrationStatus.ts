@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { Auth0ContextInterface } from '@auth0/auth0-react'
+import { translatePreAdmin as t } from '../i18nProvider'
 
 export type RegistrationStatus =
   | { status: 'loading' }
@@ -24,12 +25,12 @@ export function useRegistrationStatus(auth0: Auth0ContextInterface) {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!response.ok) {
-        throw new Error(`No se pudo verificar el registro (HTTP ${response.status}).`)
+        throw new Error(t('app.registration.verifyFailed', { status: response.status }))
       }
       const data = await response.json()
       setStatus({ status: data.registered ? 'registered' : 'unregistered' })
     } catch (error) {
-      setStatus({ status: 'error', message: error instanceof Error ? error.message : 'Error desconocido.' })
+      setStatus({ status: 'error', message: error instanceof Error ? error.message : t('app.common.unknownError') })
     }
   }, [auth0])
 

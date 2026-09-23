@@ -15,7 +15,7 @@ import { ExpenseCreate } from './expenses/ExpenseCreate'
 import { ExpenseEdit } from './expenses/ExpenseEdit'
 import { ExpenseList } from './expenses/ExpenseList'
 import { ExpenseShow } from './expenses/ExpenseShow'
-import { i18nProvider } from './i18nProvider'
+import { i18nProvider, translatePreAdmin as t } from './i18nProvider'
 import { AppLayout } from './layout/AppLayout'
 import { NeighborhoodCreate } from './neighborhoods/NeighborhoodCreate'
 import { NeighborhoodEdit } from './neighborhoods/NeighborhoodEdit'
@@ -56,16 +56,16 @@ export default function App() {
   const registration = useRegistrationStatus(auth0)
 
   if (auth0.isLoading) {
-    return <p>Cargando…</p>
+    return <p>{t('app.common.loading')}</p>
   }
 
   if (auth0.error) {
-    return <p>Error de autenticación: {auth0.error.message}</p>
+    return <p>{t('app.common.authError', { message: auth0.error.message })}</p>
   }
 
   if (!auth0.isAuthenticated) {
     auth0.loginWithRedirect()
-    return <p>Redirigiendo al login…</p>
+    return <p>{t('app.common.redirectingToLogin')}</p>
   }
 
   // Un login de Auth0 válido no alcanza: hasta que /api/Me confirme una
@@ -73,11 +73,11 @@ export default function App() {
   // dashboard. RegisterResident es la pantalla de "completa tu registro"
   // (código de unidad + datos del residente) — ver useRegistrationStatus.ts.
   if (registration.status.status === 'loading') {
-    return <p>Cargando…</p>
+    return <p>{t('app.common.loading')}</p>
   }
 
   if (registration.status.status === 'error') {
-    return <p>No se pudo verificar tu registro: {registration.status.message}</p>
+    return <p>{t('app.registration.verifyError', { message: registration.status.message })}</p>
   }
 
   if (registration.status.status === 'unregistered') {

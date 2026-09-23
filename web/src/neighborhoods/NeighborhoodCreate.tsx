@@ -1,4 +1,4 @@
-import { AutocompleteInput, BooleanInput, Create, NumberInput, required, SimpleForm, TextInput, useTranslate } from 'react-admin'
+import { AutocompleteInput, BooleanInput, Create, NumberInput, required, SimpleForm, TextInput, useLocaleState, useTranslate } from 'react-admin'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
@@ -26,6 +26,7 @@ import { getCurrencyChoices } from '../lib/currencies'
 // recurso que ya usan las traducciones (i18n/es.ts).
 export function NeighborhoodCreate() {
   const translate = useTranslate()
+  const [locale] = useLocaleState()
   return (
     <Create redirect="list">
       <SimpleForm>
@@ -59,7 +60,7 @@ export function NeighborhoodCreate() {
           <AppFormCol span={4}>
             <AutocompleteInput
               source="currency"
-              choices={getCurrencyChoices()}
+              choices={getCurrencyChoices(locale)}
               validate={required()}
               defaultValue="GTQ"
               fullWidth

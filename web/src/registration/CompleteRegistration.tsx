@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Box, Button, Typography } from '@mui/material'
 import type { Auth0ContextInterface } from '@auth0/auth0-react'
+import { translatePreAdmin as t } from '../i18nProvider'
 import { RegisterResident } from './RegisterResident'
 import { RegisterSecurityStaff } from './RegisterSecurityStaff'
 
@@ -27,18 +28,18 @@ export function CompleteRegistration({ auth0, onRegistered }: Props) {
 
   return (
     <Box sx={{ maxWidth: 420, mx: 'auto', mt: 8, px: 2 }}>
-      <Typography variant="h5" component="h1" fontWeight={700} textAlign="center" sx={{ mb: 1 }}>
-        Completa tu registro
+      <Typography variant="h5" component="h1" sx={{ fontWeight: 700, textAlign: 'center', mb: 1 }}>
+        {t('app.registration.title')}
       </Typography>
-      <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ mb: 3 }}>
-        ¿Cómo te vas a registrar?
+      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mb: 3 }}>
+        {t('app.registration.howQuestion')}
       </Typography>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <Button variant="contained" onClick={() => setKind('resident')}>
-          Soy residente
+          {t('app.registration.iAmResident')}
         </Button>
         <Button variant="outlined" onClick={() => setKind('staff')}>
-          Soy guardia de seguridad
+          {t('app.registration.iAmGuard')}
         </Button>
       </Box>
     </Box>

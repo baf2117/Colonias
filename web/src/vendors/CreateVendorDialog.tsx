@@ -55,7 +55,7 @@ export function CreateVendorDialog() {
           onCreate(created)
         },
         onError: () => {
-          notify('No se pudo crear el proveedor', { type: 'error' })
+          notify('app.vendors.createFailed', { type: 'error' })
         },
       },
     )

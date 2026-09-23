@@ -1,3 +1,4 @@
+import type { FC } from 'react'
 import { Box } from '@mui/material'
 import { BooleanField, CreateButton, List, ReferenceField, TextField, TopToolbar, useRecordContext, useTranslate } from 'react-admin'
 import { AppDatagrid } from '../components/AppDatagrid'
@@ -9,18 +10,14 @@ import { AppPageTitle } from '../components/AppPageTitle'
 // (Administrador, SuperAdministrador, Residente) — una lista corta
 // separada por comas se lee más rápido en la grilla que varias
 // columnas de check.
-const ROLE_LABELS = {
-  administrador: 'Administrador',
-  superAdministrador: 'Superadministrador',
-  residente: 'Residente',
-} as const
+// El nombre de cada rol sale de resources.residents.fields.<rol>.
+const ROLES = ['administrador', 'superAdministrador', 'residente'] as const
 
-export function ResidentRolesField() {
-  const record = useRecordContext<Record<keyof typeof ROLE_LABELS, boolean>>()
+export const ResidentRolesField: FC<{ label?: string }> = () => {
+  const record = useRecordContext<Record<(typeof ROLES)[number], boolean>>()
+  const translate = useTranslate()
   if (!record) return null
-  const roles = (Object.keys(ROLE_LABELS) as (keyof typeof ROLE_LABELS)[])
-    .filter((key) => record[key])
-    .map((key) => ROLE_LABELS[key])
+  const roles = ROLES.filter((key) => record[key]).map((key) => translate(`resources.residents.fields.${key}`))
   return <span>{roles.length > 0 ? roles.join(', ') : '—'}</span>
 }
 
@@ -49,7 +46,7 @@ export function ResidentList() {
         <ReferenceField source="unitId" reference="units" emptyText="—">
           <TextField source="identifier" />
         </ReferenceField>
-        <ResidentRolesField label="Roles" />
+        <ResidentRolesField label="app.residents.roles" />
         <BooleanField source="active" />
       </AppDatagrid>
     </List>

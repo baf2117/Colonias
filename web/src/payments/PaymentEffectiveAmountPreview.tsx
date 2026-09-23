@@ -1,9 +1,10 @@
 import { Typography } from '@mui/material'
-import { useGetOne, usePermissions } from 'react-admin'
+import { useGetOne, usePermissions, useTranslate } from 'react-admin'
 import { useWatch } from 'react-hook-form'
 import type { Permissions } from '../authProvider'
 import { isPureResident } from '../components/RequireRole'
 import { useMyUnit } from '../dashboard/MyUnitSection'
+import { useFormatLocale } from '../i18n/useFormatLocale'
 
 // Vista previa de cuánto va a quedar registrado como Amount, mientras se
 // elige la unidad en PaymentCreate — Amount nunca viaja en el POST (ver
@@ -24,6 +25,8 @@ import { useMyUnit } from '../dashboard/MyUnitSection'
 export function PaymentEffectiveAmountPreview() {
   const { permissions } = usePermissions<Permissions>()
   const isResident = isPureResident(permissions ?? null)
+  const translate = useTranslate()
+  const formatLocale = useFormatLocale()
 
   const watchedUnitId = useWatch({ name: 'unitId' })
   const { unit: myUnit, isLoading: isLoadingMyUnit } = useMyUnit()
@@ -42,18 +45,18 @@ export function PaymentEffectiveAmountPreview() {
     if (isLoadingMyUnit) return null
     if (!myUnit || !neighborhood) return null
     const amount = myUnit.feeAmount ?? neighborhood.defaultFeeAmount
-    return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(amount)}</span>
+    return <span>{new Intl.NumberFormat(formatLocale, { style: 'currency', currency: neighborhood.currency }).format(amount)}</span>
   }
 
   if (!unitId) {
     return (
       <Typography variant="body2" color="text.secondary">
-        Elegí una unidad para ver la cuota
+        {translate('app.payments.chooseUnitForFee')}
       </Typography>
     )
   }
   if (!unit || !neighborhood) return null
 
   const amount = unit.feeAmount ?? neighborhood.defaultFeeAmount
-  return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(amount)}</span>
+  return <span>{new Intl.NumberFormat(formatLocale, { style: 'currency', currency: neighborhood.currency }).format(amount)}</span>
 }

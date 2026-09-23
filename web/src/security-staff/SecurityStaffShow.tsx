@@ -2,6 +2,7 @@ import { Box, Typography } from '@mui/material'
 import {
   BooleanField,
   CreateButton,
+  DateField,
   EditButton,
   Labeled,
   ReferenceField,
@@ -12,11 +13,13 @@ import {
   TopToolbar,
   useGetOne,
   useRecordContext,
+  useTranslate,
 } from 'react-admin'
 import { AppDatagrid } from '../components/AppDatagrid'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { useFormatLocale } from '../i18n/useFormatLocale'
 import { PayrollAmountField } from '../payroll/PayrollAmountField'
 import { PayrollPeriodField } from '../payroll/PayrollPeriodField'
 
@@ -35,7 +38,8 @@ const SecurityStaffShowActions = () => (
 // tal cual, solo si la cuenta ya está vinculada o no.
 function SecurityStaffAccountField() {
   const record = useRecordContext<{ auth0Sub: string | null }>()
-  return <span>{record?.auth0Sub ? 'Vinculada' : 'Sin cuenta todavía'}</span>
+  const translate = useTranslate()
+  return <span>{record?.auth0Sub ? translate('app.common.accountLinked') : translate('app.common.accountNone')}</span>
 }
 
 // Salary/Bonuses son montos sueltos (igual que Units.FeeAmount): el
@@ -45,24 +49,26 @@ function SecurityStaffAccountField() {
 // en vez de necesitar pasar primero por una unidad.
 function SecurityStaffSalaryField() {
   const record = useRecordContext<{ salary: number; neighborhoodId: number }>()
+  const formatLocale = useFormatLocale()
   const { data: neighborhood } = useGetOne(
     'neighborhoods',
     { id: record?.neighborhoodId },
     { enabled: !!record?.neighborhoodId },
   )
   if (!record || !neighborhood) return null
-  return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(record.salary)}</span>
+  return <span>{new Intl.NumberFormat(formatLocale, { style: 'currency', currency: neighborhood.currency }).format(record.salary)}</span>
 }
 
 function SecurityStaffBonusesField() {
   const record = useRecordContext<{ bonuses: number; neighborhoodId: number }>()
+  const formatLocale = useFormatLocale()
   const { data: neighborhood } = useGetOne(
     'neighborhoods',
     { id: record?.neighborhoodId },
     { enabled: !!record?.neighborhoodId },
   )
   if (!record || !neighborhood) return null
-  return <span>{new Intl.NumberFormat('es-GT', { style: 'currency', currency: neighborhood.currency }).format(record.bonuses)}</span>
+  return <span>{new Intl.NumberFormat(formatLocale, { style: 'currency', currency: neighborhood.currency }).format(record.bonuses)}</span>
 }
 
 // Nómina de este guardia (Payroll.StaffId → SecurityStaff.StaffId), mismo
@@ -71,18 +77,19 @@ function SecurityStaffBonusesField() {
 // nunca se elige a mano (ver api/Payroll.cs), por eso no hay preview acá.
 function SecurityStaffPayrollSection() {
   const record = useRecordContext()
+  const translate = useTranslate()
   if (!record) return null
   return (
     <Box sx={{ width: '100%', mt: 2 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-        <Typography variant="h6">Nómina</Typography>
-        <CreateButton resource="payroll" label="Nuevo pago" state={{ record: { staffId: record.id } }} />
+        <Typography variant="h6">{translate('app.guards.payroll')}</Typography>
+        <CreateButton resource="payroll" label="app.guards.newPayment" state={{ record: { staffId: record.id } }} />
       </Box>
       <ReferenceManyField reference="payroll" target="staffId" label={false} sort={{ field: 'period', order: 'DESC' }}>
         <AppDatagrid rowClick="show" bulkActionButtons={false}>
-          <PayrollPeriodField label="Mes" />
-          <PayrollAmountField label="Monto" />
-          <BooleanField source="paid" label="Pagado" />
+          <PayrollPeriodField label="app.common.month" />
+          <PayrollAmountField label="app.common.amount" />
+          <BooleanField source="paid" label="resources.payroll.fields.paid" />
         </AppDatagrid>
       </ReferenceManyField>
     </Box>
@@ -97,7 +104,7 @@ export function SecurityStaffShow() {
 
         <AppFormRow>
           <AppFormCol span={3}>
-            <Labeled label="Cuenta">
+            <Labeled label="app.common.account">
               <SecurityStaffAccountField />
             </Labeled>
           </AppFormCol>
@@ -132,6 +139,11 @@ export function SecurityStaffShow() {
           <AppFormCol span={3}>
             <Labeled source="bonuses">
               <SecurityStaffBonusesField />
+            </Labeled>
+          </AppFormCol>
+          <AppFormCol span={3}>
+            <Labeled source="hireDate">
+              <DateField source="hireDate" emptyText="—" />
             </Labeled>
           </AppFormCol>
         </AppFormRow>

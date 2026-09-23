@@ -21,7 +21,9 @@ Como ya no queda un archivo por cambio, el porqué de cada decisión de esquema 
 - `2026-09-21_residents_neighborhood_id.sql` — agrega `dbo.Residents.NeighborhoodId` (la colonia que administra un Administrador, independiente de `UnitId`). Sin esta columna, `Residents.cs`/`Units.cs` fallan al leerla/escribirla.
 - `2026-09-22_residents_receive_emails.sql` — agrega `dbo.Residents.ReceiveEmails` (opt-out de correos automáticos, default `1`). Sin esta columna, `Residents.cs`/`Payments.cs`/`PaymentReminders.cs` fallan al leerla/escribirla.
 - `2026-09-22_bank_statements.sql` — crea `dbo.BankStatements` (conciliación bancaria: saldo del banco vs. saldo del sistema, por colonia y mes, sin desglose línea por línea).
+- `2026-09-22_payments_payment_date.sql` — agrega `dbo.Payments.PaymentDate` (día en que se pagó, separado del mes de la cuota) y la completa con la fecha de carga de cada pago existente. Sin esta columna, `Payments.cs` y el estado de cuentas fallan. Usa `GO` entre pasos: en el editor de consultas del portal de Azure, correr cada bloque por separado.
 - `2026-09-22_account_statement_mailings.sql` — crea `dbo.AccountStatementMailings` (registro de envíos del estado de cuentas a los vecinos). Correr después del anterior. Sin esta tabla, la pantalla "Estado de cuentas" falla al cargar.
+- `2026-09-22_security_staff_hire_date.sql` — agrega `dbo.SecurityStaff.HireDate` (fecha de contratación, `NULL` para los guardias existentes hasta que se complete). Sin esta columna, `SecurityStaff.cs` y el estado de cuentas fallan.
 
 ## Conexión desde el API (Azure Functions)
 

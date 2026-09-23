@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Button, CircularProgress, Typography } from '@mui/material'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import { useAuth0 } from '@auth0/auth0-react'
-import { useRecordContext } from 'react-admin'
+import { useRecordContext, useTranslate } from 'react-admin'
 
 // El contenedor "comprobantes" de Blob Storage no tiene lectura pública
 // (ver api/Storage/BlobStorageService.cs), así que no hay una URL fija
@@ -15,6 +15,7 @@ import { useRecordContext } from 'react-admin'
 export function PaymentReceiptField() {
   const record = useRecordContext<{ id: number; receiptBlobPath?: string | null }>()
   const auth0 = useAuth0()
+  const translate = useTranslate()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -36,12 +37,12 @@ export function PaymentReceiptField() {
         headers: { Authorization: `Bearer ${token}` },
       })
       if (!response.ok) {
-        throw new Error('No se pudo generar el enlace.')
+        throw new Error(translate('app.upload.linkFailed'))
       }
       const { url } = await response.json()
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch {
-      setError('No se pudo abrir el comprobante. Probá de nuevo.')
+      setError(translate('app.upload.openReceiptFailed'))
     } finally {
       setIsLoading(false)
     }
@@ -56,10 +57,10 @@ export function PaymentReceiptField() {
         disabled={isLoading}
         onClick={handleView}
       >
-        Ver comprobante
+        {translate('app.upload.viewReceipt')}
       </Button>
       {error && (
-        <Typography variant="caption" color="error" display="block" sx={{ mt: 0.5 }}>
+        <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
           {error}
         </Typography>
       )}

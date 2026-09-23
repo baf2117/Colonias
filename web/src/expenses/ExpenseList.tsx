@@ -18,13 +18,10 @@ import type { Permissions } from '../authProvider'
 import { AppDatagrid } from '../components/AppDatagrid'
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
+import { monthNames, useFormatLocale } from '../i18n/useFormatLocale'
 import { AppPageTitle } from '../components/AppPageTitle'
 import { isSuperAdministrador } from '../components/RequireRole'
 
-const MONTHS = [
-  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-]
 
 // Proveedor es la "agrupación por proveedor" que pidió el usuario: no un
 // GROUP BY en la base, sino un filtro (filter.vendorId) resuelto por
@@ -46,6 +43,7 @@ const MONTHS = [
 // píxeles.
 function VendorFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
   const [inputValue, setInputValue] = useState('')
 
   const { data: vendors, isLoading } = useGetList('vendors', {
@@ -73,7 +71,7 @@ function VendorFilter() {
         setFilters(newValue ? { ...rest, vendorId: newValue.id } : rest, null)
       }}
       onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
-      renderInput={(params) => <MuiTextField {...params} label="Proveedor" />}
+      renderInput={(params) => <MuiTextField {...params} label={translate('app.common.vendor')} />}
     />
   )
 }
@@ -85,6 +83,8 @@ function VendorFilter() {
 // el ancho lo da la columna de AppFormCol, no un valor fijo en píxeles.
 function MonthFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
+  const formatLocale = useFormatLocale()
 
   const setFilter = (value: number | '') => {
     const { month: _omit, ...rest } = filterValues
@@ -96,12 +96,12 @@ function MonthFilter() {
       select
       size="small"
       fullWidth
-      label="Mes"
+      label={translate('app.common.month')}
       value={filterValues.month ?? ''}
       onChange={(event) => setFilter(event.target.value === '' ? '' : Number(event.target.value))}
     >
-      <MenuItem value="">Todos</MenuItem>
-      {MONTHS.map((month, index) => (
+      <MenuItem value="">{translate('app.common.all')}</MenuItem>
+      {monthNames(formatLocale).map((month, index) => (
         <MenuItem key={month} value={index + 1}>
           {month}
         </MenuItem>
@@ -112,6 +112,7 @@ function MonthFilter() {
 
 function YearFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
   const currentYear = new Date().getFullYear()
   const years = Array.from({ length: 6 }, (_, i) => currentYear - i)
 
@@ -125,11 +126,11 @@ function YearFilter() {
       select
       size="small"
       fullWidth
-      label="Año"
+      label={translate('app.common.year')}
       value={filterValues.year ?? ''}
       onChange={(event) => setFilter(event.target.value === '' ? '' : Number(event.target.value))}
     >
-      <MenuItem value="">Todos</MenuItem>
+      <MenuItem value="">{translate('app.common.all')}</MenuItem>
       {years.map((year) => (
         <MenuItem key={year} value={year}>
           {year}
@@ -145,6 +146,7 @@ function YearFilter() {
 // VendorFilter, misma razón (mantener el título centrado).
 function NeighborhoodFilter() {
   const { filterValues, setFilters } = useListContext()
+  const translate = useTranslate()
   const [inputValue, setInputValue] = useState('')
 
   const { data: neighborhoods, isLoading } = useGetList('neighborhoods', {
@@ -172,7 +174,7 @@ function NeighborhoodFilter() {
         setFilters(newValue ? { ...rest, neighborhoodId: newValue.id } : rest, null)
       }}
       onInputChange={(_event, newInputValue) => setInputValue(newInputValue)}
-      renderInput={(params) => <MuiTextField {...params} label="Colonia" />}
+      renderInput={(params) => <MuiTextField {...params} label={translate('app.common.neighborhood')} />}
     />
   )
 }
