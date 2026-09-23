@@ -197,6 +197,23 @@ public class Units
         // porque más abajo se lo fuerza de todos modos a su propia
         // colonia -- si de algún modo llegara este filtro en su request,
         // se ignora en vez de dejarlo ver otra colonia.
+        //
+        // filter.id: el que manda ra-data-simple-rest en getMany (lo usa
+        // todo <ReferenceField source="unitId" reference="units">, p.ej.
+        // en PaymentList/PaymentShow) -- "GET /units?filter={id:[1,2,3]}"
+        // SIN range ni sort. Hasta ahora este filtro se ignoraba por
+        // completo, así que ese pedido caía al comportamiento normal de
+        // lista (range default start=0,end=9: primeras 10 unidades por
+        // UnitId) en vez de devolver justo las unidades pedidas -- con
+        // pocas unidades nunca se notaba, pero apenas hay más de 10
+        // cualquier pago cuya unidad no esté entre las primeras 10 queda
+        // sin poder resolverse (se ve "sin unidad" en PaymentList). Acá
+        // se detecta ese caso aparte: si viene filter.id, se devuelven
+        // TODAS las unidades pedidas (sin paginar) en vez de aplicar
+        // start/end, filtradas igual por el scope de colonia de abajo
+        // para que un Administrador no pueda resolver, ni por esta vía,
+        // una unidad ajena a su colonia.
+        List<int>? filterIds = null;
         int? filterNeighborhoodId = null;
         if (req.Query.TryGetValue("filter", out var filterRaw))
         {
@@ -207,11 +224,28 @@ public class Units
                 {
                     filterNeighborhoodId = nId;
                 }
+                if (filterDoc.RootElement.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.Array)
+                {
+                    filterIds = idEl.EnumerateArray()
+                        .Where(e => e.TryGetInt32(out _))
+                        .Select(e => e.GetInt32())
+                        .ToList();
+                }
             }
             catch (JsonException)
             {
                 // filter mal formado: se ignora en vez de romper la lista.
             }
+        }
+
+        // getMany con una lista vacía de ids (React Admin no debería
+        // mandarlo, pero por las dudas): no hay nada que resolver, se
+        // corta acá sin pegarle a la base ni depender de si hay scope.
+        if (filterIds is { Count: 0 })
+        {
+            req.HttpContext.Response.Headers["Content-Range"] = "units 0-0/0";
+            req.HttpContext.Response.Headers["Access-Control-Expose-Headers"] = "Content-Range";
+            return new OkObjectResult(Array.Empty<UnitDto>());
         }
 
         var scope = ResolveNeighborhoodScope(req);
@@ -233,17 +267,48 @@ public class Units
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
 
-        var whereSql = effectiveNeighborhoodId is not null ? "WHERE NeighborhoodId = @neighborhoodId" : "";
+        var whereClauses = new List<string>();
+        if (effectiveNeighborhoodId is not null)
+        {
+            whereClauses.Add("NeighborhoodId = @neighborhoodId");
+        }
+        if (filterIds is not null)
+        {
+            var idParams = string.Join(", ", filterIds.Select((_, i) => $"@id{i}"));
+            whereClauses.Add($"UnitId IN ({idParams})");
+        }
+        var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
+
+        void AddCommonParams(Microsoft.Data.SqlClient.SqlCommand c)
+        {
+            if (effectiveNeighborhoodId is not null)
+            {
+                c.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId.Value);
+            }
+            if (filterIds is not null)
+            {
+                for (var i = 0; i < filterIds.Count; i++)
+                {
+                    c.Parameters.AddWithValue($"@id{i}", filterIds[i]);
+                }
+            }
+        }
 
         int total;
         await using (var countCmd = connection.CreateCommand())
         {
             countCmd.CommandText = $"SELECT COUNT(*) FROM dbo.Units {whereSql}";
-            if (effectiveNeighborhoodId is not null)
-            {
-                countCmd.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId.Value);
-            }
+            AddCommonParams(countCmd);
             total = (int)(await countCmd.ExecuteScalarAsync() ?? 0);
+        }
+
+        // filter.id (getMany): siempre devuelve TODAS las unidades
+        // pedidas que matcheen, sin aplicar el range/paginación de una
+        // lista normal -- ver el comentario largo más arriba.
+        if (filterIds is not null)
+        {
+            start = 0;
+            end = Math.Max(filterIds.Count - 1, 0);
         }
 
         var units = new List<UnitDto>();
@@ -257,10 +322,7 @@ public class Units
                 {whereSql}
                 ORDER BY {sortField} {sortDir}
                 OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY";
-            if (effectiveNeighborhoodId is not null)
-            {
-                cmd.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId.Value);
-            }
+            AddCommonParams(cmd);
             cmd.Parameters.AddWithValue("@offset", start);
             cmd.Parameters.AddWithValue("@limit", Math.Max(end - start + 1, 1));
 

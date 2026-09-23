@@ -162,6 +162,38 @@ public class Payments
         return result is null or DBNull ? null : (decimal)result;
     }
 
+    // Mismo criterio y misma forma que ResolveNeighborhoodScope en
+    // Units.cs/Residents.cs/Vendors.cs (se duplica, cada recurso es
+    // autocontenido): un SuperAdministrador ve todos los pagos de
+    // cualquier colonia; un Administrador queda SIEMPRE acotado a la
+    // suya (currentUser.NeighborhoodId), resuelta vía Payments.UnitId ->
+    // Units.NeighborhoodId (Payments no tiene NeighborhoodId propio).
+    // Antes de esto, un Administrador veía los pagos de TODAS las
+    // colonias -- el único recurso al que se le había olvidado aplicar
+    // este scoping -- y encima UnitFilter/ReferenceField no podían
+    // resolver la unidad de un pago ajeno a su colonia (Units.cs ya
+    // estaba scoped), así que se veía "sin unidad" en la lista.
+    private readonly record struct NeighborhoodScope(bool IsScoped, int? NeighborhoodId);
+
+    private static NeighborhoodScope ResolveNeighborhoodScope(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || currentUser.SuperAdministrador)
+        {
+            return new NeighborhoodScope(false, null);
+        }
+        return new NeighborhoodScope(true, currentUser.NeighborhoodId);
+    }
+
+    private static async Task<int?> FindUnitNeighborhoodIdAsync(Microsoft.Data.SqlClient.SqlConnection connection, int unitId)
+    {
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT NeighborhoodId FROM dbo.Units WHERE UnitId = @unitId";
+        cmd.Parameters.AddWithValue("@unitId", unitId);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is null or DBNull ? null : (int)result;
+    }
+
     [Function("GetPayments")]
     public async Task<IActionResult> GetList(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "payments")] HttpRequest req)
@@ -258,6 +290,20 @@ public class Payments
             unitIdFilter = currentUser.UnitId;
         }
 
+        // Un Administrador (no puro residente, ya cubierto arriba) queda
+        // acotado a su propia colonia -- antes de esto veía los pagos de
+        // TODAS las colonias, el único recurso al que le faltaba este
+        // scoping (Units.cs/Residents.cs/Vendors.cs ya lo tenían). Sin
+        // colonia asignada todavía, no ve ningún pago (mismo criterio que
+        // esos otros recursos).
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped && scope.NeighborhoodId is null)
+        {
+            req.HttpContext.Response.Headers["Content-Range"] = "payments 0-0/0";
+            req.HttpContext.Response.Headers["Access-Control-Expose-Headers"] = "Content-Range";
+            return new OkObjectResult(Array.Empty<PaymentDto>());
+        }
+
         // Todas prefijadas con p. (alias de Payments): el LEFT JOIN a
         // Residents para ReviewedByName agrega una tabla que también
         // tiene columna UnitId, así que "UnitId = @unitId" a secas sería
@@ -279,6 +325,10 @@ public class Payments
         {
             whereClauses.Add("YEAR(p.Period) = @year");
         }
+        if (scope.IsScoped)
+        {
+            whereClauses.Add("EXISTS (SELECT 1 FROM dbo.Units U WHERE U.UnitId = p.UnitId AND U.NeighborhoodId = @scopeNeighborhoodId)");
+        }
         var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
         await using var connection = SqlConnectionFactory.Create();
@@ -290,6 +340,7 @@ public class Payments
             if (!string.IsNullOrWhiteSpace(statusFilter)) cmd.Parameters.AddWithValue("@status", statusFilter);
             if (monthFilter is not null) cmd.Parameters.AddWithValue("@month", monthFilter.Value);
             if (yearFilter is not null) cmd.Parameters.AddWithValue("@year", yearFilter.Value);
+            if (scope.IsScoped) cmd.Parameters.AddWithValue("@scopeNeighborhoodId", scope.NeighborhoodId!.Value);
         }
 
         int total;
@@ -360,6 +411,16 @@ public class Payments
         if (isPureResident && payment.UnitId != currentUser!.UnitId)
         {
             return new NotFoundResult();
+        }
+
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            var unitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, payment.UnitId);
+            if (unitNeighborhoodId is null || unitNeighborhoodId != scope.NeighborhoodId)
+            {
+                return new NotFoundResult();
+            }
         }
 
         return new OkObjectResult(payment);
@@ -445,6 +506,21 @@ public class Payments
 
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        // Un Administrador solo puede cargar/registrar pagos de una
+        // unidad de SU colonia -- mismo criterio que Vendors.cs/Create al
+        // validar la colonia de un proveedor. Un residente puro ya viene
+        // con su propia unidad forzada arriba, así que esto solo aplica
+        // al else de arriba (administrador/superadministrador).
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            var unitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, unitId);
+            if (unitNeighborhoodId is null || unitNeighborhoodId != scope.NeighborhoodId)
+            {
+                return new BadRequestObjectResult(new { error = "Esa unidad no pertenece a tu colonia.", message = "Esa unidad no pertenece a tu colonia." });
+            }
+        }
 
         // La regla central: no se puede registrar un segundo pago activo
         // para la misma unidad y el mismo mes.
@@ -603,6 +679,16 @@ public class Payments
             return new NotFoundResult();
         }
 
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            var unitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, payment.UnitId);
+            if (unitNeighborhoodId is null || unitNeighborhoodId != scope.NeighborhoodId)
+            {
+                return new NotFoundResult();
+            }
+        }
+
         var view = BlobStorageService.GetViewUrl(payment.ReceiptBlobPath);
         if (view is null)
         {
@@ -666,6 +752,27 @@ public class Payments
             currentUnitIdRaw = currentReader.GetInt32(currentReader.GetOrdinal("UnitId")).ToString();
             currentStatus = currentReader.GetString(currentReader.GetOrdinal("Status"));
             currentPeriod = currentReader.GetDateTime(currentReader.GetOrdinal("Period"));
+        }
+
+        // Un Administrador no puede editar un pago que no sea de su
+        // colonia (404, ni confirma que existe) ni moverlo a una unidad
+        // de otra colonia (400) -- mismo criterio que GetOne/Create.
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            var currentUnitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, int.Parse(currentUnitIdRaw));
+            if (currentUnitNeighborhoodId is null || currentUnitNeighborhoodId != scope.NeighborhoodId)
+            {
+                return new NotFoundResult();
+            }
+            if (body?.UnitId is not null)
+            {
+                var newUnitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, body.UnitId.Value);
+                if (newUnitNeighborhoodId is null || newUnitNeighborhoodId != scope.NeighborhoodId)
+                {
+                    return new BadRequestObjectResult(new { error = "Esa unidad no pertenece a tu colonia.", message = "Esa unidad no pertenece a tu colonia." });
+                }
+            }
         }
 
         var effectiveUnitId = body?.UnitId ?? int.Parse(currentUnitIdRaw);
@@ -784,17 +891,30 @@ public class Payments
         {
             string? residentName = null;
             string? residentEmail = null;
+            var receiveEmails = true;
 
             await using (var cmd = connection.CreateCommand())
             {
-                cmd.CommandText = "SELECT Name, Email FROM dbo.Residents WHERE ResidentId = @residentId";
+                cmd.CommandText = "SELECT Name, Email, ReceiveEmails FROM dbo.Residents WHERE ResidentId = @residentId";
                 cmd.Parameters.AddWithValue("@residentId", payment.ResidentId.Value);
                 await using var reader = await cmd.ExecuteReaderAsync();
-                if (await reader.ReadAsync() && !reader.IsDBNull(reader.GetOrdinal("Email")))
+                if (await reader.ReadAsync())
                 {
                     residentName = reader.GetString(reader.GetOrdinal("Name"));
-                    residentEmail = reader.GetString(reader.GetOrdinal("Email"));
+                    receiveEmails = reader.GetBoolean(reader.GetOrdinal("ReceiveEmails"));
+                    if (!reader.IsDBNull(reader.GetOrdinal("Email")))
+                    {
+                        residentEmail = reader.GetString(reader.GetOrdinal("Email"));
+                    }
                 }
+            }
+
+            if (!receiveEmails)
+            {
+                _logger.LogInformation(
+                    "Correo de revisión del pago {PaymentId} omitido: el residente {ResidentId} eligió no recibir correos.",
+                    payment.Id, payment.ResidentId);
+                return;
             }
 
             if (string.IsNullOrWhiteSpace(residentEmail))
@@ -861,6 +981,28 @@ public class Payments
     {
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
+
+        var scope = ResolveNeighborhoodScope(req);
+        if (scope.IsScoped)
+        {
+            object? currentUnitIdRaw;
+            await using (var currentCmd = connection.CreateCommand())
+            {
+                currentCmd.CommandText = "SELECT UnitId FROM dbo.Payments WHERE PaymentId = @id";
+                currentCmd.Parameters.AddWithValue("@id", id);
+                currentUnitIdRaw = await currentCmd.ExecuteScalarAsync();
+            }
+            if (currentUnitIdRaw is null)
+            {
+                return new NotFoundResult();
+            }
+            var unitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, (int)currentUnitIdRaw);
+            if (unitNeighborhoodId is null || unitNeighborhoodId != scope.NeighborhoodId)
+            {
+                return new NotFoundResult();
+            }
+        }
+
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = "DELETE FROM dbo.Payments OUTPUT DELETED.PaymentId WHERE PaymentId = @id";
         cmd.Parameters.AddWithValue("@id", id);

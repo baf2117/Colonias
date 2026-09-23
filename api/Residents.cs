@@ -44,10 +44,11 @@ public class Residents
         bool SuperAdministrador,
         bool Residente,
         bool Active,
+        bool ReceiveEmails,
         string? Auth0Sub);
 
     private const string SelectColumns =
-        "ResidentId, Name, Phone, Email, UnitId, NeighborhoodId, Administrador, SuperAdministrador, Residente, Active, Auth0Sub";
+        "ResidentId, Name, Phone, Email, UnitId, NeighborhoodId, Administrador, SuperAdministrador, Residente, Active, ReceiveEmails, Auth0Sub";
 
     private static ResidentDto Read(Microsoft.Data.SqlClient.SqlDataReader reader) => new(
         reader.GetInt32(reader.GetOrdinal("ResidentId")),
@@ -60,6 +61,7 @@ public class Residents
         reader.GetBoolean(reader.GetOrdinal("SuperAdministrador")),
         reader.GetBoolean(reader.GetOrdinal("Residente")),
         reader.GetBoolean(reader.GetOrdinal("Active")),
+        reader.GetBoolean(reader.GetOrdinal("ReceiveEmails")),
         reader.IsDBNull(reader.GetOrdinal("Auth0Sub")) ? null : reader.GetString(reader.GetOrdinal("Auth0Sub")));
 
     // A diferencia de Neighborhoods (donde GetList/GetOne quedan abiertos
@@ -492,7 +494,8 @@ public class Residents
         bool? Administrador,
         bool? SuperAdministrador,
         bool? Residente,
-        bool? Active);
+        bool? Active,
+        bool? ReceiveEmails);
 
     [Function("CreateResident")]
     public async Task<IActionResult> Create(
@@ -549,13 +552,13 @@ public class Residents
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO dbo.Residents
-                (Name, Phone, Email, UnitId, NeighborhoodId, Administrador, SuperAdministrador, Residente, Active)
+                (Name, Phone, Email, UnitId, NeighborhoodId, Administrador, SuperAdministrador, Residente, Active, ReceiveEmails)
             OUTPUT
                 INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId, INSERTED.NeighborhoodId,
                 INSERTED.Administrador, INSERTED.SuperAdministrador,
-                INSERTED.Residente, INSERTED.Active, INSERTED.Auth0Sub
+                INSERTED.Residente, INSERTED.Active, INSERTED.ReceiveEmails, INSERTED.Auth0Sub
             VALUES
-                (@name, @phone, @email, @unitId, @neighborhoodId, @administrador, @superAdministrador, @residente, @active)";
+                (@name, @phone, @email, @unitId, @neighborhoodId, @administrador, @superAdministrador, @residente, @active, @receiveEmails)";
         cmd.Parameters.AddWithValue("@name", body.Name);
         cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@email", (object?)body.Email ?? DBNull.Value);
@@ -565,6 +568,7 @@ public class Residents
         cmd.Parameters.AddWithValue("@superAdministrador", body.SuperAdministrador ?? false);
         cmd.Parameters.AddWithValue("@residente", body.Residente ?? false);
         cmd.Parameters.AddWithValue("@active", body.Active ?? true);
+        cmd.Parameters.AddWithValue("@receiveEmails", body.ReceiveEmails ?? true);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         await reader.ReadAsync();
@@ -582,7 +586,8 @@ public class Residents
         bool? Administrador,
         bool? SuperAdministrador,
         bool? Residente,
-        bool? Active);
+        bool? Active,
+        bool? ReceiveEmails);
 
     [Function("UpdateResident")]
     public async Task<IActionResult> Update(
@@ -658,11 +663,12 @@ public class Residents
                 Administrador = COALESCE(@administrador, Administrador),
                 SuperAdministrador = COALESCE(@superAdministrador, SuperAdministrador),
                 Residente = COALESCE(@residente, Residente),
-                Active = COALESCE(@active, Active)
+                Active = COALESCE(@active, Active),
+                ReceiveEmails = COALESCE(@receiveEmails, ReceiveEmails)
             OUTPUT
                 INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId, INSERTED.NeighborhoodId,
                 INSERTED.Administrador, INSERTED.SuperAdministrador,
-                INSERTED.Residente, INSERTED.Active, INSERTED.Auth0Sub
+                INSERTED.Residente, INSERTED.Active, INSERTED.ReceiveEmails, INSERTED.Auth0Sub
             WHERE ResidentId = @id";
         cmd.Parameters.AddWithValue("@name", (object?)body?.Name ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@phone", (object?)body?.Phone ?? DBNull.Value);
@@ -673,6 +679,7 @@ public class Residents
         cmd.Parameters.AddWithValue("@superAdministrador", (object?)body?.SuperAdministrador ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@residente", (object?)body?.Residente ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@active", (object?)body?.Active ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@receiveEmails", (object?)body?.ReceiveEmails ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -791,7 +798,7 @@ public class Residents
             OUTPUT
                 INSERTED.ResidentId, INSERTED.Name, INSERTED.Phone, INSERTED.Email, INSERTED.UnitId, INSERTED.NeighborhoodId,
                 INSERTED.Administrador, INSERTED.SuperAdministrador, INSERTED.Residente,
-                INSERTED.Active, INSERTED.Auth0Sub
+                INSERTED.Active, INSERTED.ReceiveEmails, INSERTED.Auth0Sub
             VALUES (@name, @phone, @email, @unitId, @sub, 1, 1)";
         cmd.Parameters.AddWithValue("@name", body.Name.Trim());
         cmd.Parameters.AddWithValue("@phone", (object?)body.Phone ?? DBNull.Value);

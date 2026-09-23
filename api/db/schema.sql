@@ -106,8 +106,18 @@ CREATE TABLE dbo.Residents (
     SuperAdministrador  BIT             NOT NULL DEFAULT 0,
     Residente           BIT             NOT NULL DEFAULT 0,
     Active              BIT             NOT NULL DEFAULT 1,
+    ReceiveEmails       BIT             NOT NULL DEFAULT 1,   -- opt-out de correos (aprobación/rechazo de pago, recordatorio) -- ver nota abajo
     CreatedAt           DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
 );
+
+-- ReceiveEmails (agregada 2026-09-22): si el residente quiere recibir
+-- los correos automáticos del sistema (Payments.cs: aviso de pago
+-- aprobado/rechazado; PaymentReminders.cs: recordatorio de pago
+-- pendiente). Default 1 (opt-out, no opt-in) para no dejar de avisarle a
+-- nadie de un día para el otro cuando se agregó esta columna -- cada
+-- quien lo desactiva a mano si no lo quiere. No filtra RegisterResident
+-- (auto-registro): un residente nuevo entra con el default en true,
+-- igual que Active.
 
 -- NeighborhoodId (agregada 2026-09-21) es la colonia que un Administrador
 -- administra -- independiente de UnitId, a propósito: un "administrador

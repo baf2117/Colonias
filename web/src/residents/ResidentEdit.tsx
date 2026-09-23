@@ -59,6 +59,13 @@ export function ResidentEdit() {
           <AppFormCol span={2}>
             <BooleanInput source="active" />
           </AppFormCol>
+          <AppFormCol span={4}>
+            <BooleanInput
+              source="receiveEmails"
+              label="Recibe correos"
+              helperText="Avisos de pago aprobado/rechazado y recordatorio de pago pendiente."
+            />
+          </AppFormCol>
         </AppFormRow>
         <AppFormRow>
           <AppFormCol span={3}>

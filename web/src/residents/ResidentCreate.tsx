@@ -57,6 +57,14 @@ export function ResidentCreate() {
           <AppFormCol span={2}>
             <BooleanInput source="active" defaultValue={true} />
           </AppFormCol>
+          <AppFormCol span={4}>
+            <BooleanInput
+              source="receiveEmails"
+              label="Recibe correos"
+              defaultValue={true}
+              helperText="Avisos de pago aprobado/rechazado y recordatorio de pago pendiente."
+            />
+          </AppFormCol>
         </AppFormRow>
 
         <AppFormRow>

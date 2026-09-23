@@ -88,6 +88,13 @@ export function ResidentShow() {
           </AppFormCol>
         </AppFormRow>
         <AppFormRow>
+          <AppFormCol span={3}>
+            <Labeled label="Recibe correos">
+              <BooleanField source="receiveEmails" />
+            </Labeled>
+          </AppFormCol>
+        </AppFormRow>
+        <AppFormRow>
           <AppFormCol span={4}>
             <Labeled source="residente">
               <BooleanField source="residente" />

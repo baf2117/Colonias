@@ -102,7 +102,7 @@ public class PaymentReminders
             {
                 cmd.CommandText = @"
                     SELECT Name, Email FROM dbo.Residents
-                    WHERE UnitId = @unitId AND Active = 1 AND Email IS NOT NULL";
+                    WHERE UnitId = @unitId AND Active = 1 AND Email IS NOT NULL AND ReceiveEmails = 1";
                 cmd.Parameters.AddWithValue("@unitId", candidate.UnitId);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
