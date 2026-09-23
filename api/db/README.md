@@ -20,6 +20,8 @@ Como ya no queda un archivo por cambio, el porqué de cada decisión de esquema 
 - `2026-09-21_payment_reminders.sql` — crea `dbo.PaymentReminders` (control de recordatorios de pago ya enviados, usada por el Timer Trigger `PaymentReminders.cs`). Sin esta tabla, ese Timer Trigger falla al intentar leerla/escribirla.
 - `2026-09-21_residents_neighborhood_id.sql` — agrega `dbo.Residents.NeighborhoodId` (la colonia que administra un Administrador, independiente de `UnitId`). Sin esta columna, `Residents.cs`/`Units.cs` fallan al leerla/escribirla.
 - `2026-09-22_residents_receive_emails.sql` — agrega `dbo.Residents.ReceiveEmails` (opt-out de correos automáticos, default `1`). Sin esta columna, `Residents.cs`/`Payments.cs`/`PaymentReminders.cs` fallan al leerla/escribirla.
+- `2026-09-22_bank_statements.sql` — crea `dbo.BankStatements` (conciliación bancaria: saldo del banco vs. saldo del sistema, por colonia y mes, sin desglose línea por línea).
+- `2026-09-22_account_statement_mailings.sql` — crea `dbo.AccountStatementMailings` (registro de envíos del estado de cuentas a los vecinos). Correr después del anterior. Sin esta tabla, la pantalla "Estado de cuentas" falla al cargar.
 
 ## Conexión desde el API (Azure Functions)
 

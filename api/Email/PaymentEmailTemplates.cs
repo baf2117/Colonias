@@ -19,22 +19,22 @@ public static class PaymentEmailTemplates
     // (red.base / green.light) -- si esa paleta cambia, actualizar acá
     // también a mano; no hay forma de compartir la constante entre el
     // frontend (TS) y el correo (HTML de un backend en C#).
-    private const string AccentColor = "#ec3013";
-    private const string ApprovedColor = "#2f6f4a";
-    private const string RejectedColor = "#ae1800"; // red[700] de theme.ts: "texto sobre fondo claro"
-    private const string TextColor = "#201e1d";
-    private const string MutedTextColor = "#7d7979";
-    private const string BackgroundColor = "#f8f4f4";
-    private const string CardBackgroundColor = "#ffffff";
-    private const string BorderColor = "#eae7e7";
+    internal const string AccentColor = "#ec3013";
+    internal const string ApprovedColor = "#2f6f4a";
+    internal const string RejectedColor = "#ae1800"; // red[700] de theme.ts: "texto sobre fondo claro"
+    internal const string TextColor = "#201e1d";
+    internal const string MutedTextColor = "#7d7979";
+    internal const string BackgroundColor = "#f8f4f4";
+    internal const string CardBackgroundColor = "#ffffff";
+    internal const string BorderColor = "#eae7e7";
 
     /// <summary>
-    /// Envoltorio común a todos los correos de Pagos: fondo, tarjeta
-    /// centrada de 600px, barra superior de acento, título de la
-    /// colonia y pie de página. `bodyHtml` es el contenido específico de
-    /// cada correo (ya con sus propios `<p>`/tablas).
+    /// Envoltorio común a todos los correos (Pagos y Estado de cuentas):
+    /// fondo, tarjeta centrada de 600px, barra superior de acento, título
+    /// de la colonia y pie de página. `bodyHtml` es el contenido
+    /// específico de cada correo (ya con sus propios `<p>`/tablas).
     /// </summary>
-    private static string Layout(string neighborhoodName, string preheader, string bodyHtml) => $@"
+    internal static string Layout(string neighborhoodName, string preheader, string bodyHtml) => $@"
 <!DOCTYPE html>
 <html lang=""es"">
 <head>

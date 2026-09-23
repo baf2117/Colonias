@@ -196,6 +196,45 @@ CREATE TABLE dbo.PaymentReminders (
 
 CREATE UNIQUE INDEX UX_PaymentReminders_UnitId_Period ON dbo.PaymentReminders(UnitId, Period);
 
+-- Conciliación bancaria (agregada 2026-09-22): un registro por cada
+-- estado de cuenta que carga el administrador para cuadrar el saldo del
+-- banco contra el saldo del sistema (Payments aprobados - Expenses -
+-- Payroll pagado, calculado del lado del API, no acá) para una colonia y
+-- un mes puntuales. A propósito NO guarda el desglose línea por línea
+-- del estado de cuenta -- el usuario solo necesita comparar el saldo
+-- final, no reconciliar movimiento por movimiento.
+CREATE TABLE dbo.BankStatements (
+    BankStatementId     INT IDENTITY(1,1) PRIMARY KEY,
+    NeighborhoodId      INT             NOT NULL REFERENCES dbo.Neighborhoods(NeighborhoodId),
+    Period              DATE            NOT NULL,   -- mes que cubre el estado de cuenta, día 1 (mismo criterio que Payments.Period)
+    BankBalance         DECIMAL(12,2)   NOT NULL,   -- saldo final según el banco
+    StatementBlobPath   NVARCHAR(500)   NULL,       -- el PDF/archivo del estado de cuenta en Blob Storage
+    Notes               NVARCHAR(500)   NULL,
+    UploadedByUserId    INT             NOT NULL REFERENCES dbo.Residents(ResidentId),   -- resuelto del lado del servidor, nunca viaja en el body del request
+    CreatedAt           DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+CREATE INDEX IX_BankStatements_NeighborhoodId_Period ON dbo.BankStatements(NeighborhoodId, Period);
+
+-- Envíos del estado de cuentas por correo a los vecinos (agregada
+-- 2026-09-22, ver SendAccountStatement en AccountStatement.cs): una fila
+-- por envío, con el balance del banco que se usó. Sirve para mostrar el
+-- último envío y, cuando se active el app setting
+-- AccountStatementOncePerMonth, para no mandar dos veces el mismo mes (la
+-- regla vive en el API, no en un índice único, para poder apagarla).
+CREATE TABLE dbo.AccountStatementMailings (
+    AccountStatementMailingId   INT IDENTITY(1,1) PRIMARY KEY,
+    NeighborhoodId              INT             NOT NULL REFERENCES dbo.Neighborhoods(NeighborhoodId),
+    Period                      DATE            NOT NULL,   -- mes enviado, día 1
+    BankStatementId             INT             NOT NULL REFERENCES dbo.BankStatements(BankStatementId),
+    SentByUserId                INT             NOT NULL REFERENCES dbo.Residents(ResidentId),
+    RecipientCount              INT             NOT NULL,   -- correos enviados con éxito
+    FailedCount                 INT             NOT NULL DEFAULT 0,
+    SentAt                      DATETIME2       NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
+CREATE INDEX IX_AccountStatementMailings_NeighborhoodId_Period ON dbo.AccountStatementMailings(NeighborhoodId, Period);
+
 CREATE TABLE dbo.Vendors (
     VendorId        INT IDENTITY(1,1) PRIMARY KEY,
     Name            NVARCHAR(150)   NOT NULL,

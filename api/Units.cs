@@ -213,8 +213,13 @@ public class Units
         // start/end, filtradas igual por el scope de colonia de abajo
         // para que un Administrador no pueda resolver, ni por esta vía,
         // una unidad ajena a su colonia.
+        //
+        // filter.q: lo que se escribe en un <AutocompleteInput> de unidad
+        // (p.ej. PaymentCreate). Busca por identificador o dirección, igual
+        // que "q" en Vendors.cs/Residents.cs.
         List<int>? filterIds = null;
         int? filterNeighborhoodId = null;
+        string? searchFilter = null;
         if (req.Query.TryGetValue("filter", out var filterRaw))
         {
             try
@@ -223,6 +228,10 @@ public class Units
                 if (filterDoc.RootElement.TryGetProperty("neighborhoodId", out var nEl) && nEl.TryGetInt32(out var nId))
                 {
                     filterNeighborhoodId = nId;
+                }
+                if (filterDoc.RootElement.TryGetProperty("q", out var qEl) && qEl.ValueKind == JsonValueKind.String)
+                {
+                    searchFilter = qEl.GetString();
                 }
                 if (filterDoc.RootElement.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.Array)
                 {
@@ -277,6 +286,10 @@ public class Units
             var idParams = string.Join(", ", filterIds.Select((_, i) => $"@id{i}"));
             whereClauses.Add($"UnitId IN ({idParams})");
         }
+        if (!string.IsNullOrWhiteSpace(searchFilter))
+        {
+            whereClauses.Add("(Identifier LIKE @search OR Address LIKE @search)");
+        }
         var whereSql = whereClauses.Count > 0 ? "WHERE " + string.Join(" AND ", whereClauses) : "";
 
         void AddCommonParams(Microsoft.Data.SqlClient.SqlCommand c)
@@ -284,6 +297,10 @@ public class Units
             if (effectiveNeighborhoodId is not null)
             {
                 c.Parameters.AddWithValue("@neighborhoodId", effectiveNeighborhoodId.Value);
+            }
+            if (!string.IsNullOrWhiteSpace(searchFilter))
+            {
+                c.Parameters.AddWithValue("@search", $"%{searchFilter.Trim()}%");
             }
             if (filterIds is not null)
             {

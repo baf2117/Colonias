@@ -120,7 +120,7 @@ export function PaymentCreate() {
           <>
             <AppFormRow>
               <AppFormCol span={4}>
-                <ReferenceInput source="unitId" reference="units">
+                <ReferenceInput source="unitId" reference="units" sort={{ field: 'identifier', order: 'ASC' }}>
                   <AutocompleteInput optionText="identifier" validate={required()} fullWidth />
                 </ReferenceInput>
               </AppFormCol>

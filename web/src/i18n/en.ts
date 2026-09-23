@@ -102,5 +102,21 @@ export const customEnglishMessages = {
         createdAt: 'Created at',
       },
     },
+    'account-statement': {
+      name: 'Account statement |||| Account statement',
+    },
+    'bank-statements': {
+      name: 'Bank statement |||| Bank statements',
+      fields: {
+        id: 'ID',
+        neighborhoodId: 'Neighborhood',
+        period: 'Month',
+        bankBalance: 'Bank balance',
+        statementBlobPath: 'File',
+        notes: 'Notes',
+        uploadedByUserId: 'Uploaded by',
+        createdAt: 'Uploaded at',
+      },
+    },
   },
 }

@@ -12,6 +12,7 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { SuperAdminOnlyDeleteToolbar } from '../components/SuperAdminOnlyDeleteToolbar'
 import { PayrollAmountField } from './PayrollAmountField'
 
 // Mismo formulario que PayrollCreate, precargado con los valores
@@ -24,7 +25,7 @@ export function PayrollEdit() {
   const translate = useTranslate()
   return (
     <Edit redirect="show">
-      <SimpleForm>
+      <SimpleForm toolbar={<SuperAdminOnlyDeleteToolbar />}>
         <AppPageTitle>{translate('resources.payroll.name', { smart_count: 1 })}</AppPageTitle>
 
         <AppFormRow>

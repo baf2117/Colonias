@@ -173,16 +173,23 @@ public class Payments
     // este scoping -- y encima UnitFilter/ReferenceField no podían
     // resolver la unidad de un pago ajeno a su colonia (Units.cs ya
     // estaba scoped), así que se veía "sin unidad" en la lista.
+    //
+    // A diferencia de Units/Residents/Vendors (que solo usan
+    // administradores), acá también entran residentes: SOLO un
+    // Administrador se acota por colonia. Un residente puro ya queda
+    // acotado a su propia unidad (isPureResident en cada endpoint), y
+    // Residents.NeighborhoodId es null para él (es la colonia que
+    // ADMINISTRA), así que acotarlo por colonia le bloqueaba todo.
     private readonly record struct NeighborhoodScope(bool IsScoped, int? NeighborhoodId);
 
     private static NeighborhoodScope ResolveNeighborhoodScope(HttpRequest req)
     {
         var currentUser = req.HttpContext.GetCurrentUser();
-        if (currentUser is null || currentUser.SuperAdministrador)
+        if (currentUser is { Administrador: true, SuperAdministrador: false })
         {
-            return new NeighborhoodScope(false, null);
+            return new NeighborhoodScope(true, currentUser.NeighborhoodId);
         }
-        return new NeighborhoodScope(true, currentUser.NeighborhoodId);
+        return new NeighborhoodScope(false, null);
     }
 
     private static async Task<int?> FindUnitNeighborhoodIdAsync(Microsoft.Data.SqlClient.SqlConnection connection, int unitId)
@@ -192,6 +199,26 @@ public class Payments
         cmd.Parameters.AddWithValue("@unitId", unitId);
         var result = await cmd.ExecuteScalarAsync();
         return result is null or DBNull ? null : (int)result;
+    }
+
+    // Borrar un pago es irreversible y le borra a la unidad su historial
+    // de haber pagado o no un mes -- el usuario pidió que solo un
+    // SuperAdministrador pueda hacerlo (un Administrador, aunque sea de
+    // la colonia dueña del pago, no). Mismo criterio en Expenses.cs y
+    // Payroll.cs para gastos y pagos a guardias.
+    private static IActionResult? RequireSuperAdministrador(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !currentUser.SuperAdministrador)
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo un superadministrador puede eliminar un pago.",
+                message = "Solo un superadministrador puede eliminar un pago.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+        return null;
     }
 
     [Function("GetPayments")]
@@ -799,7 +826,7 @@ public class Payments
             UPDATE dbo.Payments
             SET UnitId = COALESCE(@unitId, UnitId),
                 ResidentId = COALESCE(@residentId, ResidentId),
-                ReceiptBlobPath = @receiptBlobPath,
+                ReceiptBlobPath = COALESCE(@receiptBlobPath, ReceiptBlobPath),
                 Status = COALESCE(@status, Status),
                 RejectionReason = @rejectionReason,
                 ReviewedByUserId = CASE WHEN @isNewReview = 1 THEN @reviewedByUserId ELSE ReviewedByUserId END,
@@ -812,7 +839,11 @@ public class Payments
             WHERE PaymentId = @id";
         cmd.Parameters.AddWithValue("@unitId", (object?)body?.UnitId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@residentId", (object?)body?.ResidentId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("@receiptBlobPath", (object?)body?.ReceiptBlobPath ?? DBNull.Value);
+        // Comprobante con COALESCE (igual que Expenses): una edición que no
+        // manda uno nuevo conserva el que ya había, nunca lo borra.
+        // Reemplazarlo es subir otro archivo (ReceiptUploadInput en
+        // PaymentEdit.tsx).
+        cmd.Parameters.AddWithValue("@receiptBlobPath", string.IsNullOrWhiteSpace(body?.ReceiptBlobPath) ? DBNull.Value : body.ReceiptBlobPath);
         cmd.Parameters.AddWithValue("@status", (object?)normalizedStatus ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@rejectionReason", (object?)body?.RejectionReason ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@isNewReview", isNewReview);
@@ -979,29 +1010,17 @@ public class Payments
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "payments/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireSuperAdministrador(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
+        // Sin chequeo de scope por colonia acá: RequireSuperAdministrador
+        // de arriba ya garantiza que solo un SuperAdministrador (nunca
+        // "scoped", ver ResolveNeighborhoodScope) llega a este punto.
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
-
-        var scope = ResolveNeighborhoodScope(req);
-        if (scope.IsScoped)
-        {
-            object? currentUnitIdRaw;
-            await using (var currentCmd = connection.CreateCommand())
-            {
-                currentCmd.CommandText = "SELECT UnitId FROM dbo.Payments WHERE PaymentId = @id";
-                currentCmd.Parameters.AddWithValue("@id", id);
-                currentUnitIdRaw = await currentCmd.ExecuteScalarAsync();
-            }
-            if (currentUnitIdRaw is null)
-            {
-                return new NotFoundResult();
-            }
-            var unitNeighborhoodId = await FindUnitNeighborhoodIdAsync(connection, (int)currentUnitIdRaw);
-            if (unitNeighborhoodId is null || unitNeighborhoodId != scope.NeighborhoodId)
-            {
-                return new NotFoundResult();
-            }
-        }
 
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = "DELETE FROM dbo.Payments OUTPUT DELETED.PaymentId WHERE PaymentId = @id";

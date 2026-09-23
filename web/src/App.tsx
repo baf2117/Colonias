@@ -2,8 +2,13 @@ import { useAuth0 } from '@auth0/auth0-react'
 import { CssBaseline, ThemeProvider } from '@mui/material'
 import { createTheme } from '@mui/material/styles'
 import { Admin, Resource } from 'react-admin'
+import { AccountStatementPage } from './account-statement/AccountStatementPage'
 import { buildAuthProvider } from './authProvider'
-import { requireAdminOrSuperAdmin, requireSuperAdmin } from './components/RequireRole'
+import { BankStatementCreate } from './bank-statements/BankStatementCreate'
+import { BankStatementEdit } from './bank-statements/BankStatementEdit'
+import { BankStatementList } from './bank-statements/BankStatementList'
+import { BankStatementShow } from './bank-statements/BankStatementShow'
+import { requireAdminOrSuperAdmin, requireRole, requireSuperAdmin } from './components/RequireRole'
 import { buildDataProvider } from './dataProvider'
 import Dashboard from './dashboard/Dashboard'
 import { ExpenseCreate } from './expenses/ExpenseCreate'
@@ -188,6 +193,25 @@ export default function App() {
           pantallas completas (Create/Show/Edit) porque además hace falta
           navegar a un pago puntual. Ver api/Payroll.cs. */}
       <Resource name="payroll" create={PayrollCreate} show={PayrollShow} edit={PayrollEdit} />
+      {/* Estados de cuenta bancarios (dbo.BankStatements): solo
+          Administrador/SuperAdministrador; un Administrador solo ve y sube
+          los de su colonia (ver api/BankStatements.cs). */}
+      <Resource
+        name="bank-statements"
+        list={requireAdminOrSuperAdmin(BankStatementList)}
+        create={requireAdminOrSuperAdmin(BankStatementCreate)}
+        show={requireAdminOrSuperAdmin(BankStatementShow)}
+        edit={requireAdminOrSuperAdmin(BankStatementEdit)}
+      />
+      {/* Estado de cuentas: no es un CRUD, es un dashboard de solo lectura
+          (api/AccountStatement.cs). Se registra como Resource con solo
+          `list` para tener la ruta /account-statement sin armar rutas a
+          mano. Lo ve cualquier residente (de su colonia) o administrador;
+          enviarlo por correo es solo de administradores. */}
+      <Resource
+        name="account-statement"
+        list={requireRole(AccountStatementPage, (permissions) => permissions?.kind === 'resident')}
+      />
     </Admin>
   )
 }

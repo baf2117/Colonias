@@ -54,6 +54,14 @@ public static class BlobStorageService
     public static string NewExpenseBlobPath(int vendorId, string extension) =>
         $"expenses/{vendorId}/{Guid.NewGuid():N}.{extension.ToLowerInvariant()}";
 
+    // Estado de cuenta bancario: "bank-statements/{neighborhoodId}/{guid}.{ext}",
+    // agrupado por colonia. BankStatements.cs valida este prefijo al crear
+    // el registro, para que no se pueda asociar un archivo de otra colonia.
+    public static string BankStatementBlobPrefix(int neighborhoodId) => $"bank-statements/{neighborhoodId}/";
+
+    public static string NewBankStatementBlobPath(int neighborhoodId, string extension) =>
+        $"{BankStatementBlobPrefix(neighborhoodId)}{Guid.NewGuid():N}.{extension.ToLowerInvariant()}";
+
     /// <summary>
     /// URL con SAS de escritura para subir un comprobante nuevo
     /// directamente desde el navegador, sin que el archivo pase por el
@@ -76,6 +84,22 @@ public static class BlobStorageService
         sasBuilder.SetPermissions(BlobSasPermissions.Create | BlobSasPermissions.Write);
 
         return (blobClient.GenerateSasUri(sasBuilder), expiresAt);
+    }
+
+    /// <summary>
+    /// Contenido completo de un archivo ya subido, del lado del servidor
+    /// (p.ej. para adjuntar el balance del banco a un correo). Null si no
+    /// existe.
+    /// </summary>
+    public static async Task<byte[]?> DownloadAsync(string blobPath)
+    {
+        var blobClient = GetContainerClient().GetBlobClient(blobPath);
+        if (!await blobClient.ExistsAsync())
+        {
+            return null;
+        }
+        var content = await blobClient.DownloadContentAsync();
+        return content.Value.Content.ToArray();
     }
 
     /// <summary>

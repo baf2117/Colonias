@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
+using Neighborhood.Auth;
 using Neighborhood.Database;
 
 namespace Neighborhood;
@@ -43,6 +44,24 @@ public class Payroll
         reader.GetDateTime(reader.GetOrdinal("CreatedAt")));
 
     private static DateTime FirstOfMonth(DateTime date) => new(date.Year, date.Month, 1);
+
+    // Borrar un pago de nómina es irreversible -- el usuario pidió que
+    // solo un SuperAdministrador pueda hacerlo. Mismo criterio en
+    // Payments.cs y Expenses.cs para pagos de residentes y gastos.
+    private static IActionResult? RequireSuperAdministrador(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !currentUser.SuperAdministrador)
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo un superadministrador puede eliminar un pago de nómina.",
+                message = "Solo un superadministrador puede eliminar un pago de nómina.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+        return null;
+    }
 
     // Sueldo + bono del guardia al momento de crear el pago. Devuelve
     // null si StaffId no existe. Mismo cálculo que GetEffectiveFeeAsync
@@ -289,6 +308,12 @@ public class Payroll
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "payroll/{id:int}")] HttpRequest req, int id)
     {
+        var forbidden = RequireSuperAdministrador(req);
+        if (forbidden is not null)
+        {
+            return forbidden;
+        }
+
         await using var connection = SqlConnectionFactory.Create();
         await connection.OpenAsync();
         await using var cmd = connection.CreateCommand();

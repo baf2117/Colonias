@@ -77,6 +77,25 @@ public class Expenses
         return null;
     }
 
+    // Borrar un gasto es irreversible -- el usuario pidió que solo un
+    // SuperAdministrador pueda hacerlo, no cualquier Administrador. Mismo
+    // criterio en Payments.cs y Payroll.cs para pagos de residentes y
+    // pagos a guardias.
+    private static IActionResult? RequireSuperAdministrador(HttpRequest req)
+    {
+        var currentUser = req.HttpContext.GetCurrentUser();
+        if (currentUser is null || !currentUser.SuperAdministrador)
+        {
+            return new ObjectResult(new
+            {
+                error = "Solo un superadministrador puede eliminar un gasto.",
+                message = "Solo un superadministrador puede eliminar un gasto.",
+            })
+            { StatusCode = StatusCodes.Status403Forbidden };
+        }
+        return null;
+    }
+
     [Function("GetExpenses")]
     public async Task<IActionResult> GetList(
         [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "expenses")] HttpRequest req)
@@ -476,7 +495,7 @@ public class Expenses
     public async Task<IActionResult> Delete(
         [HttpTrigger(AuthorizationLevel.Anonymous, "delete", Route = "expenses/{id:int}")] HttpRequest req, int id)
     {
-        var forbidden = RequireAdminOrSuperAdmin(req);
+        var forbidden = RequireSuperAdministrador(req);
         if (forbidden is not null)
         {
             return forbidden;

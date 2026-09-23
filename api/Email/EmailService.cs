@@ -6,6 +6,8 @@ namespace Neighborhood.Email;
 
 public record EmailSendResult(bool Success, int StatusCode, string ResponseBody);
 
+public record EmailAttachment(string Name, byte[] Content);
+
 /// <summary>
 /// Envío de correo transaccional vía Brevo (antes Sendinblue): un POST
 /// directo a su API REST (https://api.brevo.com/v3/smtp/email), sin el
@@ -41,15 +43,25 @@ public static class EmailService
     /// y seguir, típicamente: un correo que falla no debe tumbar la
     /// operación que lo disparó) mirando el resultado.
     /// </summary>
-    public static async Task<EmailSendResult> SendAsync(string toEmail, string? toName, string subject, string htmlContent)
+    public static async Task<EmailSendResult> SendAsync(
+        string toEmail, string? toName, string subject, string htmlContent, IReadOnlyList<EmailAttachment>? attachments = null)
     {
-        var payload = new
+        var payload = new Dictionary<string, object?>
         {
-            sender = new { email = SenderEmail, name = SenderName },
-            to = new[] { new { email = toEmail, name = toName } },
-            subject,
-            htmlContent,
+            ["sender"] = new { email = SenderEmail, name = SenderName },
+            ["to"] = new[] { new { email = toEmail, name = toName } },
+            ["subject"] = subject,
+            ["htmlContent"] = htmlContent,
         };
+        // Brevo recibe los adjuntos en base64 dentro del mismo JSON; el
+        // nombre tiene que tener una extensión que Brevo acepte (pdf, jpg,
+        // png, etc.).
+        if (attachments is { Count: > 0 })
+        {
+            payload["attachment"] = attachments
+                .Select(a => new { name = a.Name, content = Convert.ToBase64String(a.Content) })
+                .ToArray();
+        }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "v3/smtp/email")
         {

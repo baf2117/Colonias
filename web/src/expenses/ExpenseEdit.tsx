@@ -14,6 +14,7 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { SuperAdminOnlyDeleteToolbar } from '../components/SuperAdminOnlyDeleteToolbar'
 import { CreateVendorDialog } from '../vendors/CreateVendorDialog'
 import { ExpenseReceiptUploadInput } from './ExpenseReceiptUploadInput'
 
@@ -27,12 +28,13 @@ function ExpenseEditTitle() {
 }
 
 // Mismo formulario que ExpenseCreate, precargado con los valores
-// actuales. El toolbar por defecto de SimpleForm en un <Edit> ya trae
-// el botón "Eliminar" además de "Guardar".
+// actuales. El botón "Eliminar" solo se muestra a un SuperAdministrador
+// (ver SuperAdminOnlyDeleteToolbar) -- el backend (RequireSuperAdministrador
+// en Expenses.cs) es la protección real.
 export function ExpenseEdit() {
   return (
     <Edit redirect="list">
-      <SimpleForm>
+      <SimpleForm toolbar={<SuperAdminOnlyDeleteToolbar />}>
         <ExpenseEditTitle />
 
         <AppFormRow>

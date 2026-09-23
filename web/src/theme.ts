@@ -47,6 +47,34 @@ const green = {
 
 const fontFamily = '"Sora", system-ui, sans-serif'
 
+// Tamaños de letra: los defaults de MUI + 2px en cada estilo, a pedido
+// del usuario. Van fijados uno por uno (en rem, base 16px) porque
+// `typography.fontSize` escala todo en proporción y no daría +2px parejo
+// (un título de 24px subiría 3,4px). Entre paréntesis, el default de MUI.
+const typography = {
+  fontFamily,
+  h1: { fontSize: '6.125rem' }, // 98px (96)
+  h2: { fontSize: '3.875rem' }, // 62px (60)
+  h3: { fontSize: '3.125rem' }, // 50px (48)
+  h4: { fontSize: '2.25rem' }, // 36px (34)
+  h5: { fontSize: '1.625rem' }, // 26px (24)
+  h6: { fontSize: '1.375rem' }, // 22px (20)
+  subtitle1: { fontSize: '1.125rem' }, // 18px (16)
+  subtitle2: { fontSize: '1rem' }, // 16px (14)
+  body1: { fontSize: '1.125rem' }, // 18px (16): texto general, campos de formulario
+  body2: { fontSize: '1rem' }, // 16px (14): tablas y listas
+  caption: { fontSize: '0.875rem' }, // 14px (12): ayudas y notas
+  overline: { fontSize: '0.875rem' }, // 14px (12)
+  button: { fontSize: '1rem', textTransform: 'none' as const, fontWeight: 600 }, // 16px (14)
+}
+
+// Componentes que traen su propio tamaño fijo en MUI (no heredan de las
+// variantes de arriba), también +2px.
+const fontSizeOverrides = {
+  MuiChip: { styleOverrides: { label: { fontSize: '0.9375rem' } } }, // 15px (13)
+  MuiTooltip: { styleOverrides: { tooltip: { fontSize: '0.8125rem' } } }, // 13px (11)
+}
+
 // Estándar de botones del proyecto: bajamos la altura de forma bien
 // explícita en `sizeSmall`/`sizeMedium` (no solo con size="small" en
 // defaultProps) porque las clases de tamaño de MUI se inyectan DESPUÉS
@@ -65,7 +93,7 @@ const buttonDefaults = {
       paddingBottom: 4,
       paddingLeft: 12,
       paddingRight: 12,
-      fontSize: '0.8125rem',
+      fontSize: '0.9375rem', // 15px (13 antes del +2px)
     },
     sizeMedium: {
       minHeight: 32,
@@ -95,8 +123,9 @@ export const lightTheme = deepmerge(defaultTheme, {
     divider: 'rgba(32, 30, 29, 0.4)',
   },
   shape: { borderRadius: 0 },
-  typography: { fontFamily, button: { textTransform: 'none', fontWeight: 600 } },
+  typography,
   components: {
+    ...fontSizeOverrides,
     MuiButton: buttonDefaults,
     MuiPaper: { styleOverrides: { root: { borderRadius: 0 } } },
     MuiDivider: { styleOverrides: { root: { borderBottomWidth: 2 } } },
@@ -123,8 +152,9 @@ export const darkTheme = deepmerge(defaultDarkTheme, {
     divider: 'rgba(248, 244, 244, 0.3)',
   },
   shape: { borderRadius: 0 },
-  typography: { fontFamily, button: { textTransform: 'none', fontWeight: 600 } },
+  typography,
   components: {
+    ...fontSizeOverrides,
     MuiButton: buttonDefaults,
     MuiPaper: { styleOverrides: { root: { borderRadius: 0 } } },
     MuiDivider: { styleOverrides: { root: { borderBottomWidth: 2 } } },

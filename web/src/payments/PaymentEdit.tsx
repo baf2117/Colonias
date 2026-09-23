@@ -13,7 +13,11 @@ import {
 import { AppFormCol } from '../components/AppFormCol'
 import { AppFormRow } from '../components/AppFormRow'
 import { AppPageTitle } from '../components/AppPageTitle'
+import { Stack } from '@mui/material'
+import { SuperAdminOnlyDeleteToolbar } from '../components/SuperAdminOnlyDeleteToolbar'
 import { PaymentAmountField } from './PaymentAmountField'
+import { PaymentReceiptField } from './PaymentReceiptField'
+import { ReceiptUploadInput } from './ReceiptUploadInput'
 
 const STATUS_CHOICES = [
   { id: 'pending', name: 'Pendiente' },
@@ -38,12 +42,12 @@ export function PaymentEdit() {
   const translate = useTranslate()
   return (
     <Edit redirect="list">
-      <SimpleForm>
+      <SimpleForm toolbar={<SuperAdminOnlyDeleteToolbar />}>
         <AppPageTitle>{translate('resources.payments.name', { smart_count: 1 })}</AppPageTitle>
 
         <AppFormRow>
           <AppFormCol span={4}>
-            <ReferenceInput source="unitId" reference="units">
+            <ReferenceInput source="unitId" reference="units" sort={{ field: 'identifier', order: 'ASC' }}>
               <AutocompleteInput optionText="identifier" validate={required()} fullWidth />
             </ReferenceInput>
           </AppFormCol>
@@ -67,7 +71,16 @@ export function PaymentEdit() {
             <SelectInput source="status" choices={STATUS_CHOICES} fullWidth />
           </AppFormCol>
           <AppFormCol span={4}>
-            <TextInput source="receiptBlobPath" label="Comprobante" fullWidth />
+            {/* El comprobante guardado se abre con "Ver comprobante" (URL
+                firmada, igual que en PaymentShow); para cambiarlo se sube
+                otro archivo. Antes era un TextInput con la ruta interna
+                del blob, que no servía para verlo. */}
+            <Labeled label="Comprobante">
+              <Stack spacing={1} alignItems="flex-start">
+                <PaymentReceiptField />
+                <ReceiptUploadInput source="receiptBlobPath" />
+              </Stack>
+            </Labeled>
           </AppFormCol>
         </AppFormRow>
 

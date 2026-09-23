@@ -11,10 +11,10 @@ import { isAdminOrSuperAdmin, isSuperAdministrador } from '../components/Require
 // placeholders de funcionalidad que no se va a construir por ahora.
 // "Inicio", "Cuotas y pagos" (ahora un recurso real contra /api/payments,
 // ya no el cascarón de FeesShell), "Colonia", "Unidades", "Gastos",
-// "Guardias" y "Directorio de residentes" tienen pantalla real hoy — el
-// resto de Finanzas ("Estado de cuenta", "Presupuesto") son placeholders
-// visibles pero sin navegación, a propósito: mejor eso que un link que
-// lleva a una pantalla en blanco.
+// "Guardias", "Directorio de residentes", "Balance Banco" y "Estado de
+// cuentas" (solo administradores) tienen pantalla real hoy. "Presupuesto"
+// se sacó del menú a pedido del usuario. Un ítem sin `to` se muestra como
+// placeholder visible pero sin navegación.
 //
 // "Gastos" no tiene un ítem hermano de "Proveedores": los proveedores
 // (dbo.Vendors) se dan de alta al vuelo desde el propio formulario de
@@ -42,7 +42,9 @@ import { isAdminOrSuperAdmin, isSuperAdministrador } from '../components/Require
 // api/*.cs) y en los HOC requireSuperAdmin/requireAdminOrSuperAdmin que
 // envuelven las pantallas en App.tsx — esto es solo para no mostrar un
 // link que de todos modos va a terminar en "acceso denegado".
-type Item = { text: string; to?: string; adminOnly?: boolean }
+// residentsOnly: cualquier usuario con fila en Residents (residente o
+// administrador), pero no un guardia (kind 'staff').
+type Item = { text: string; to?: string; adminOnly?: boolean; residentsOnly?: boolean }
 
 const groups: { label: string; items: Item[] }[] = [
   {
@@ -65,8 +67,8 @@ const groups: { label: string; items: Item[] }[] = [
     label: 'Finanzas',
     items: [
       { text: 'Cuotas y pagos', to: '/payments' },
-      { text: 'Estado de cuenta' },
-      { text: 'Presupuesto' },
+      { text: 'Balance Banco', to: '/bank-statements', adminOnly: true },
+      { text: 'Estado de cuentas', to: '/account-statement', residentsOnly: true },
     ],
   },
   // El grupo "Operación" (Visitas y acceso, Mantenimiento, Incidencias,
@@ -102,7 +104,11 @@ export function AppMenu() {
     .filter((group) => group.label !== 'SuperUsuario' || isSuperAdministrador(resolvedPermissions))
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => !item.adminOnly || isAdminOrSuperAdmin(resolvedPermissions)),
+      items: group.items.filter(
+        (item) =>
+          (!item.adminOnly || isAdminOrSuperAdmin(resolvedPermissions)) &&
+          (!item.residentsOnly || resolvedPermissions?.kind === 'resident'),
+      ),
     }))
     // Administración hoy tiene todos sus ítems marcados adminOnly, así que
     // para cualquier otro rol queda sin ítems — hay que sacar el grupo
@@ -124,7 +130,7 @@ export function AppMenu() {
               sx={{
                 bgcolor: 'transparent',
                 lineHeight: 2.2,
-                fontSize: '0.68rem',
+                fontSize: '0.805rem', // ~13px (0.68rem + 2px)
                 fontWeight: 700,
                 letterSpacing: '0.08em',
                 color: 'text.secondary',

@@ -102,5 +102,21 @@ export const customSpanishMessages = {
         createdAt: 'Registrado el',
       },
     },
+    'account-statement': {
+      name: 'Estado de cuentas |||| Estado de cuentas',
+    },
+    'bank-statements': {
+      name: 'Balance Banco |||| Balance Banco',
+      fields: {
+        id: 'ID',
+        neighborhoodId: 'Colonia',
+        period: 'Mes',
+        bankBalance: 'Saldo según el banco',
+        statementBlobPath: 'Archivo',
+        notes: 'Notas',
+        uploadedByUserId: 'Subido por',
+        createdAt: 'Subido el',
+      },
+    },
   },
 }
